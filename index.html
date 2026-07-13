@@ -1,0 +1,2391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <!-- viewport-fit=cover so env(safe-area-inset-*) works on notched phones -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f3b46" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>RepairTally — Repair Cost Estimator</title>
+  <style>
+    /* ============================================================= *
+     * Design tokens. Professional slate + teal + "money green".     *
+     * Deliberately NOT orange-on-dark-gray.                         *
+     * ============================================================= */
+    :root {
+      --bg:          #eaeef2;
+      --surface:     #ffffff;
+      --surface-alt: #f5f8fa;
+      --border:      #d9e1e8;
+      --border-2:    #c6d2db;
+
+      --text:        #17242e;
+      --text-2:      #435562;
+      --muted:       #74889a;
+
+      --primary:       #0f3b46;   /* deep teal-navy   */
+      --primary-600:   #12586a;
+      --primary-tint:  #e2eef1;
+      --accent:        #1f8f66;   /* money green      */
+      --accent-600:    #157552;
+      --accent-tint:   #e3f3ec;
+      --danger:        #b0473e;
+      --danger-tint:   #f6e6e4;
+      --flag:          #9a6b12;   /* price override flag (amber, used sparingly) */
+      --flag-tint:     #f6edd8;
+
+      --shadow-1: 0 1px 2px rgba(16,40,52,.08), 0 1px 3px rgba(16,40,52,.06);
+      --shadow-2: 0 6px 24px rgba(16,40,52,.16);
+
+      --radius:   14px;
+      --radius-sm: 10px;
+      --tap: 44px;                /* minimum touch target */
+
+      --sat: env(safe-area-inset-top);
+      --sab: env(safe-area-inset-bottom);
+      --sal: env(safe-area-inset-left);
+      --sar: env(safe-area-inset-right);
+
+      --maxw: 720px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+            Helvetica, Arial, "Apple Color Emoji", sans-serif;
+      -webkit-text-size-adjust: 100%;
+      -webkit-font-smoothing: antialiased;
+      padding-left: var(--sal);
+      padding-right: var(--sar);
+    }
+    button { font: inherit; color: inherit; cursor: pointer; }
+    input { font: inherit; }
+    ul { list-style: none; margin: 0; padding: 0; }
+
+    #app { max-width: var(--maxw); margin: 0 auto; min-height: 100vh; }
+
+    /* ---------------- App bar (fixed / always visible) ------------- */
+    .appbar {
+      position: sticky; top: 0; z-index: 20;
+      background: var(--primary);
+      color: #eaf4f5;
+      padding: calc(var(--sat) + 10px) 14px 12px;
+      box-shadow: var(--shadow-1);
+    }
+    .appbar-row { display: flex; align-items: center; gap: 10px; }
+    .appbar-title { flex: 1; min-width: 0; }
+    .proj-name {
+      font-weight: 700; font-size: 17px; color: #fff;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .proj-sub { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #9dc3c9; }
+
+    .totals-row { margin-top: 12px; align-items: flex-end; gap: 14px; }
+    .grand { font-size: 30px; font-weight: 800; color: #fff; letter-spacing: -.01em; line-height: 1; }
+    .progress-wrap { flex: 1; }
+    .progress-bar {
+      height: 8px; border-radius: 999px; background: rgba(255,255,255,.18); overflow: hidden;
+    }
+    .progress-bar > span {
+      display: block; height: 100%; background: var(--accent);
+      border-radius: 999px; transition: width .25s ease;
+    }
+    .progress-label { margin-top: 5px; font-size: 12px; color: #b9d6da; text-align: right; }
+
+    /* ---------------- Buttons ------------------------------------- */
+    .btn-primary, .btn-secondary, .btn-ghost, .btn-add, .btn-add-item {
+      min-height: var(--tap); border-radius: var(--radius-sm);
+      padding: 0 16px; border: 1px solid transparent; font-weight: 600;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:active { background: var(--accent-600); }
+    .btn-secondary { background: var(--primary-tint); color: var(--primary); border-color: var(--border-2); }
+    .btn-ghost { background: transparent; color: var(--text-2); border-color: var(--border-2); }
+    .btn-ghost[disabled] { opacity: .45; cursor: not-allowed; }
+    .appbar .btn-ghost { color: #cfe6e9; border-color: rgba(255,255,255,.35); }
+
+    .icon-btn {
+      min-width: var(--tap); min-height: var(--tap);
+      display: inline-flex; align-items: center; justify-content: center;
+      border-radius: var(--radius-sm); border: 1px solid transparent;
+      background: transparent; font-size: 18px; color: var(--text-2);
+    }
+    .appbar .icon-btn { color: #cfe6e9; }
+    .icon-btn.danger { color: var(--danger); }
+    .icon-btn:active { background: rgba(0,0,0,.06); }
+
+    /* ---------------- Screen scaffolding -------------------------- */
+    .screen { padding: 14px 14px calc(28px + var(--sab)); }
+    .section-head {
+      font-size: 12px; letter-spacing: .08em; text-transform: uppercase;
+      color: var(--muted); font-weight: 700; margin: 6px 4px 10px;
+    }
+
+    /* ---------------- Projects list ------------------------------- */
+    .proj-list { display: flex; flex-direction: column; gap: 10px; }
+    .proj-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px; display: flex; align-items: center; gap: 10px;
+      box-shadow: var(--shadow-1);
+    }
+    .proj-card.is-active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+    .proj-card-main { flex: 1; min-width: 0; }
+    .proj-card-name { font-weight: 700; font-size: 16px; }
+    .proj-card-meta { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+    .proj-card-actions { display: flex; gap: 2px; }
+
+    /* ---------------- Room list ----------------------------------- */
+    .room-list { display: flex; flex-direction: column; gap: 10px; }
+    .room-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 13px 14px; box-shadow: var(--shadow-1);
+    }
+    .room-card-top { display: flex; align-items: baseline; gap: 10px; }
+    .room-card-name { font-weight: 700; font-size: 16px; flex: 1; min-width: 0; }
+    .room-card-total { font-weight: 700; font-size: 16px; color: var(--primary); }
+    .room-card-bottom { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+    .mini-progress { flex: 1; height: 6px; border-radius: 999px; background: var(--border); overflow: hidden; }
+    .mini-progress > span { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+    .room-card-meta { font-size: 12px; color: var(--muted); white-space: nowrap; }
+    .room-card-bottom .icon-btn { min-width: 36px; min-height: 36px; font-size: 16px; }
+
+    .add-room-bar {
+      margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px;
+      background: var(--surface); border: 1px dashed var(--border-2);
+      border-radius: var(--radius); padding: 12px;
+    }
+    .add-room-bar .btn-add {
+      flex: 1 1 auto; background: var(--surface-alt); color: var(--primary);
+      border-color: var(--border-2);
+    }
+
+    /* ---------------- Room detail / groups ------------------------ */
+    .room-detail-head { padding: 4px 4px 14px; }
+    .rd-title { font-size: 22px; font-weight: 800; }
+    .rd-sub { color: var(--muted); font-size: 13px; margin-top: 3px; }
+    .rd-sub [data-role="room-subtotal"] { color: var(--primary); font-weight: 700; }
+
+    .group {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); margin-bottom: 12px; overflow: hidden;
+      box-shadow: var(--shadow-1);
+    }
+    .group-head {
+      display: flex; align-items: center; gap: 8px; width: 100%;
+      padding: 14px; background: transparent; border: 0; text-align: left;
+      min-height: var(--tap);
+    }
+    .chev { transition: transform .18s ease; color: var(--muted); font-size: 12px; }
+    .group.is-collapsed .chev { transform: rotate(-90deg); }
+    .group-label { flex: 1; font-weight: 700; font-size: 15px; min-width: 0; }
+    .group-badge {
+      width: 22px; height: 22px; border-radius: 999px; border: 1.5px solid var(--border-2);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-size: 13px; color: transparent;
+    }
+    .group-badge.is-done { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .group-subtotal { font-weight: 700; color: var(--primary); font-variant-numeric: tabular-nums; }
+    .group.is-collapsed .group-body { display: none; }
+    .group-body { border-top: 1px solid var(--border); }
+
+    .no-action-row {
+      display: flex; align-items: center; gap: 10px; padding: 11px 14px;
+      background: var(--surface-alt); border-bottom: 1px solid var(--border);
+      font-size: 14px; color: var(--text-2); min-height: var(--tap);
+    }
+    .no-action-row input { width: 22px; height: 22px; }
+
+    .line {
+      display: grid;
+      grid-template-columns: auto 1fr 84px auto;
+      grid-template-areas: "chk main qty total" "chk sub sub del";
+      align-items: center; gap: 4px 10px;
+      padding: 10px 12px 10px 14px; border-bottom: 1px solid var(--border);
+    }
+    .line:last-child { border-bottom: 0; }
+    .line.is-disabled { opacity: .5; }
+    .line-check { grid-area: chk; width: 24px; height: 24px; align-self: start; margin-top: 2px; }
+    .line-main { grid-area: main; min-width: 0; }
+    .line-name { font-weight: 600; font-size: 14px; }
+    .line-name .tag {
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+      background: var(--primary-tint); color: var(--primary); padding: 1px 5px; border-radius: 5px; margin-left: 5px;
+    }
+    .line-sub { grid-area: sub; display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+    .price-btn {
+      background: transparent; border: 1px dashed var(--border-2); border-radius: 7px;
+      padding: 4px 8px; min-height: 30px; color: var(--text-2); font-weight: 600; font-size: 13px;
+      display: inline-flex; align-items: center; gap: 5px;
+    }
+    .price-btn.is-override { border-color: var(--flag); color: var(--flag); background: var(--flag-tint); }
+    .price-btn .dot { width: 6px; height: 6px; border-radius: 999px; background: var(--flag); display: inline-block; }
+    .price-btn[disabled] { opacity: .6; }
+    .unit { color: var(--muted); font-size: 12.5px; }
+
+    .qty {
+      grid-area: qty; width: 84px; height: var(--tap);
+      border: 1px solid var(--border-2); border-radius: var(--radius-sm);
+      padding: 0 10px; text-align: right; font-size: 15px; font-variant-numeric: tabular-nums;
+      background: var(--surface);
+    }
+    .qty:disabled { background: var(--surface-alt); color: var(--muted); }
+    .qty:focus { outline: 2px solid var(--primary-600); outline-offset: -1px; border-color: var(--primary-600); }
+    .line-total {
+      grid-area: total; text-align: right; font-weight: 700; font-size: 14px;
+      color: var(--text); font-variant-numeric: tabular-nums; align-self: center;
+    }
+    .line .del { grid-area: del; justify-self: end; min-width: 36px; min-height: 36px; font-size: 20px; color: var(--muted); }
+
+    .add-item {
+      display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 14px; background: var(--surface-alt);
+    }
+    .add-item input {
+      height: var(--tap); border: 1px solid var(--border-2); border-radius: var(--radius-sm);
+      padding: 0 10px; background: var(--surface);
+    }
+    .add-item .ai-name { flex: 1 1 100%; }
+    .add-item .ai-cost { flex: 1 1 90px; width: 90px; text-align: right; }
+    .add-item .ai-unit { flex: 1 1 90px; min-width: 0; }
+    .add-item .btn-add-item { flex: 0 0 auto; background: var(--primary); color: #fff; }
+
+    /* ---------------- Modal (price editor) ------------------------ */
+    .modal-backdrop {
+      position: fixed; inset: 0; z-index: 50; background: rgba(16,32,42,.45);
+      display: flex; align-items: flex-end; justify-content: center;
+      padding: 0; -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+    }
+    .modal {
+      background: var(--surface); width: 100%; max-width: var(--maxw);
+      border-radius: 18px 18px 0 0; padding: 18px 18px calc(18px + var(--sab));
+      box-shadow: var(--shadow-2); animation: sheet .18s ease-out;
+    }
+    @keyframes sheet { from { transform: translateY(18px); opacity: .6; } to { transform: none; opacity: 1; } }
+    .modal-title { font-weight: 800; font-size: 18px; }
+    .modal-item { color: var(--text-2); margin: 4px 0 14px; }
+    .modal-field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 6px; }
+    .modal-field span { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+    .modal-field input {
+      height: 50px; border: 1px solid var(--border-2); border-radius: var(--radius-sm);
+      padding: 0 14px; font-size: 20px; font-weight: 700; text-align: right;
+    }
+    .override-note { font-size: 12.5px; color: var(--flag); margin: 8px 2px 4px; }
+    .modal-actions { display: flex; gap: 8px; margin-top: 14px; }
+    .modal-actions > * { flex: 1; }
+
+    @media (min-width: 560px) {
+      .modal-backdrop { align-items: center; padding: 20px; }
+      .modal { border-radius: 18px; }
+    }
+
+    /* ---------------- Photos (Phase 2) --------------------------- */
+    .photo-section {
+      margin-top: 18px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 14px; box-shadow: var(--shadow-1);
+    }
+    .photo-section-head {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      margin-bottom: 12px;
+    }
+    .photo-section-title { font-weight: 700; font-size: 15px; }
+    .photo-gallery {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 10px;
+    }
+    .photo-gallery.is-empty { color: var(--muted); font-size: 13px; padding: 8px 2px; }
+    .photo-thumb {
+      position: relative; border: 1px solid var(--border); border-radius: var(--radius-sm);
+      overflow: hidden; aspect-ratio: 1; padding: 0; background: var(--surface-alt);
+      min-height: 88px;
+    }
+    .photo-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .photo-thumb-label {
+      position: absolute; left: 0; right: 0; bottom: 0; padding: 4px 6px;
+      font-size: 10px; line-height: 1.2; color: #fff; background: rgba(0,0,0,.55);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .photo-saving {
+      margin-top: 8px; font-size: 13px; color: var(--primary);
+    }
+    .photo-error {
+      margin-top: 8px; padding: 10px 12px; border-radius: var(--radius-sm);
+      background: var(--danger-tint); color: var(--danger); font-size: 13px;
+    }
+
+    .line {
+      grid-template-columns: auto 1fr auto 84px auto;
+      grid-template-areas: "chk main cam qty total" "chk sub sub sub del";
+    }
+    .line-cam {
+      grid-area: cam; position: relative; min-width: 36px; min-height: 36px;
+      font-size: 17px; color: var(--text-2);
+    }
+    .line-cam .badge {
+      position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px;
+      border-radius: 999px; background: var(--accent); color: #fff;
+      font-size: 10px; font-weight: 700; line-height: 16px; text-align: center;
+      padding: 0 4px;
+    }
+
+    .viewer-backdrop {
+      position: fixed; inset: 0; z-index: 60; background: rgba(8,18,24,.92);
+      display: flex; flex-direction: column; padding: calc(var(--sat) + 10px) 14px calc(14px + var(--sab));
+      color: #eaf4f5;
+    }
+    .viewer-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .viewer-top .btn-ghost { color: #cfe6e9; border-color: rgba(255,255,255,.35); }
+    .viewer-title { flex: 1; font-weight: 700; font-size: 16px; min-width: 0; }
+    .viewer-img-wrap {
+      flex: 1; display: flex; align-items: center; justify-content: center;
+      min-height: 0; margin-bottom: 12px;
+    }
+    .viewer-img-wrap img {
+      max-width: 100%; max-height: 100%; object-fit: contain; border-radius: var(--radius-sm);
+    }
+    .viewer-label input {
+      width: 100%; height: 46px; border-radius: var(--radius-sm);
+      border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.08);
+      color: #fff; padding: 0 12px; margin-bottom: 10px;
+    }
+    .viewer-actions { display: flex; gap: 8px; }
+    .viewer-actions > * { flex: 1; }
+    .viewer-actions .btn-danger {
+      min-height: var(--tap); border-radius: var(--radius-sm); padding: 0 16px;
+      font-weight: 600; background: var(--danger); color: #fff; border: 0;
+    }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="modal-root"></div>
+
+  <!-- Vendor libs loaded from disk (no CDN) so export works fully offline,
+       including when opened via file://. Do not modify these files. -->
+  <script src="vendor/xlsx.bundle.js"></script>
+  <script src="vendor/jszip.min.js"></script>
+
+  <script>
+  "use strict";
+  /* =================================================================
+   * RepairTally — Phase 3 (export: styled Excel + photos in a ZIP).
+   * Modules in required order: Catalog -> Store -> State -> Calc ->
+   * Exporter -> UI -> Events. Only Store touches localStorage and
+   * IndexedDB. Vendor libs (XLSX, JSZip) are loaded from disk above.
+   * ================================================================= */
+
+  /* ---------- tiny shared helpers ---------- */
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function hasOwn(o, k) { return Object.prototype.hasOwnProperty.call(o, k); }
+  function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
+  function escapeRegex(s) { return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+
+  // Currency: whole dollars render as "$12,345"; fractional unit costs keep cents.
+  function fmt(n) {
+    n = round2(Number(n) || 0);
+    var opts = Number.isInteger(n)
+      ? { minimumFractionDigits: 0, maximumFractionDigits: 0 }
+      : { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+    return "$" + n.toLocaleString("en-US", opts);
+  }
+  function fmtTime(ts) {
+    if (!ts) return "—";
+    try {
+      return new Date(ts).toLocaleString(undefined, {
+        month: "short", day: "numeric", hour: "numeric", minute: "2-digit"
+      });
+    } catch (e) { return "—"; }
+  }
+
+  var _uidc = 0;
+  function uid(prefix) {
+    return prefix + Date.now().toString(36) + (_uidc++).toString(36) + Math.random().toString(36).slice(2, 5);
+  }
+
+  // Line state is keyed by `${roomId}:${groupId}:${itemId}` so every group
+  // instance is independent, even when two groups reuse the same catalog item.
+  function lineKey(roomId, groupId, itemId) {
+    return roomId + ":" + groupId + ":" + itemId;
+  }
+  // Group instance state keyed by `${roomId}:${groupId}` (groupId may contain ":").
+  function groupKey(roomId, groupId) { return roomId + ":" + groupId; }
+  function parseLineKey(key) {
+    var first = key.indexOf(":");
+    var last = key.lastIndexOf(":");
+    if (first === -1 || last === first) return null;
+    return [key.slice(0, first), key.slice(first + 1, last), key.slice(last + 1)];
+  }
+  function splitAtFirstColon(key) {
+    var i = key.indexOf(":");
+    return [key.slice(0, i), key.slice(i + 1)];
+  }
+  // v1 keys were `${roomId}:${itemId}` (exactly one colon).
+  function isLegacyLineKey(key) { return key.indexOf(":") === key.lastIndexOf(":"); }
+
+  var SCHEMA_VERSION = 2;
+
+  /* =================================================================
+   * 1) CATALOG — static data (built from the official CSV below).
+   * ================================================================= */
+  var Catalog = (function () {
+    // The official price list, embedded VERBATIM (single source of truth).
+    var CSV = [
+      'id,name,cost,unit',
+      'ig-01,"Refinish Hardwood Floor",2.35,"sqft"',
+      'ig-02,"New Hardwoods 1.5""",10.00,"sqft"',
+      'ig-03,"New Hardwoods 2""",4.75,"sqft"',
+      'ig-04,"Hardwood Splicing",8.40,"sqft"',
+      'ig-05,"Vinyl Plank",2.50,"sqft"',
+      'ig-06,"Carpet",1.90,"sqft"',
+      'ig-07,"Interior Paint — 2 Tone",2.95,"sqft"',
+      'ig-08,"Drywall Repair",900.00,"1,000 sqft"',
+      'ig-09,"Wallpaper Removal",250.00,"room"',
+      'ig-10,"Interior Door — Hollow Slab",125.00,"ea."',
+      'ig-11,"Interior Door Hardware (Knob + Hinges + Labor)",25.00,"ea."',
+      'ig-12,"Bifold Door with Framing",400.00,"ea."',
+      'ig-13,"Interior Door — Pre-hung",200.00,"ea."',
+      'ig-14,"Front Entry Door",475.00,"ea."',
+      'ig-15,"Front Entry Door Hardware",80.00,"ea."',
+      'ig-16,"Exterior Door Hardware",75.00,"handle"',
+      'ig-17,"Exterior Insulated Side Door (Installed)",500.00,"ea."',
+      'ig-18,"Sliding Glass Door",1025.00,"ea."',
+      'ig-19,"Trim Out (Casing, Crown, Baseboard)",3.75,"LF"',
+      'ig-20,"MISC / Punch List",2650.00,"flat"',
+      'ig-21,"Finish Out Labor",1350.00,"flat"',
+      'ig-22,"Light Fixtures",70.00,"100 sqft"',
+      'ig-23,"Bedbug Spray / Heat Treat",475.00,"ea."',
+      'ig-24,"Termite Treatment",650.00,"ea."',
+      'ig-25,"Demo",1375.00,"variable"',
+      'ig-26,"Haul Off",725.00,"load"',
+      'ig-27,"Final Cleaning",325.00,"flat"',
+      'ig-28,"Staging",0.90,"sqft"',
+      'kt-01,"Hinges and Pulls",275.00,"kitchen"',
+      'kt-02,"Cabinets Uppers",125.00,"LF"',
+      'kt-03,"Cabinets Lowers",150.00,"LF"',
+      'kt-04,"Cabinet Door Faces Only",80.00,"door"',
+      'kt-05,"Cabinets (Labor & Paint)",1100.00,"kitchen"',
+      'kt-06,"Granite + 4"" Splash Guard",40.00,"LF"',
+      'kt-07,"Backsplash",725.00,"house"',
+      'kt-08,"Misc Woodwork",500.00,"variable"',
+      'kt-09,"Tile — Large Areas",6.45,"sqft"',
+      'kt-10,"Tile — Small Areas",10.00,"sqft"',
+      'kt-11,"Undermount Kitchen Sink",325.00,"ea."',
+      'kt-12,"Microwave / Hood",500.00,"ea."',
+      'kt-13,"Range",725.00,"ea."',
+      'kt-14,"Wall Oven",1075.00,"ea."',
+      'kt-15,"Cooktop",550.00,"ea."',
+      'kt-16,"Dishwasher",575.00,"ea."',
+      'kt-17,"Fridge",1175.00,"ea."',
+      'ba-01,"Granite ($/LF)",35.00,"LF"',
+      'ba-02,"New Bottom Vanity",125.00,"LF"',
+      'ba-03,"Home Depot Vanity w/ Sink (18"")",225.00,"ea."',
+      'ba-04,"Toilet",150.00,"ea."',
+      'ba-05,"Tile — Large Areas",5.80,"sqft"',
+      'ba-06,"Tile — Small Areas",10.00,"sqft"',
+      'ba-07,"Reglaze Tub or Chemical Clean",350.00,"ea."',
+      'ba-08,"Reglaze Tub + Surround",750.00,"ea."',
+      'ba-09,"Reglaze Shower",1325.00,"ea."',
+      'ba-10,"Tiled Shower Tear Out + Tile Install",3100.00,"ea."',
+      'ba-11,"Tub Tile Surround Tear Out + Tile Install (incl. tub)",2250.00,"ea."',
+      'ba-12,"Shower Plastic Insert Tear Out + New Insert",825.00,"ea."',
+      'ba-13,"Tub Tear Out + New Insert & Tub",1575.00,"ea."',
+      'ba-14,"Undermount Sink",150.00,"ea."',
+      'ba-15,"Mirror",200.00,"ea."',
+      'ba-16,"HVL (needed if no window)",275.00,"ea."',
+      'as-01,"Furnace",3350.00,"ea."',
+      'as-02,"Condensing Unit",3300.00,"ea."',
+      'as-03,"Package Unit",4700.00,"ea."',
+      'as-04,"A-Coil (if no condensing unit)",1625.00,"ea."',
+      'as-05,"Ducting (if NO HVAC)",3200.00,"ea."',
+      'as-06,"Duct Cleaning — Floor Vents",550.00,"ea."',
+      'as-07,"Window Unit Replacement 220",575.00,"ea."',
+      'as-08,"Hot Water Heater w/ Expansion Tank",1425.00,"ea."',
+      'as-09,"Hot Water Heater Expansion Tank Only",200.00,"ea."',
+      'as-10,"Switches / Outlets",1400.00,"house"',
+      'as-11,"Standard Electrical",1650.00,"house"',
+      'as-12,"Subfloor",8.20,"sqft"',
+      'as-13,"Framing",950.00,"variable"',
+      'as-14,"Structural (Pier)",375.00,"pier"',
+      'as-15,"Structural Foam Injection",5.85,"sqft of affected area"',
+      'as-16,"Roof",1100.00,"225 sqft L&M"',
+      'as-17,"Plumbing",1000.00,"variable"',
+      'as-18,"Electrical Panel Swap to 200A",2350.00,"ea."',
+      'as-19,"Full Electrical Rewire (to Studs)",5.65,"sqft"',
+      'as-20,"Full Electrical Rewire (leaving Drywall)",9.15,"sqft"',
+      'as-21,"Wall Insulation (to Studs)",1.20,"sqft"',
+      'as-22,"Attic Insulation",1225.00,"1,600 sqft house"',
+      'as-23,"New Drywall to Studs (L&M)",5.20,"sqft"',
+      'as-24,"Aluminum Wiring",2450.00,"variable"',
+      'ex-01,"Fence Repair — Chain Link / Wood Gate",225.00,"variable"',
+      'ex-02,"Fence Repair — Chain Link",275.00,"LF"',
+      'ex-03,"Fence Repair — Privacy 6ft",30.00,"LF"',
+      'ex-04,"Landscaping",450.00,"variable"',
+      'ex-05,"Vinyl Siding (10\'x10\')",300.00,"square"',
+      'ex-06,"Tuck Pointing",225.00,"variable"',
+      'ex-07,"Exterior Paint",2.60,"sqft"',
+      'ex-08,"Exterior Wood Repair",525.00,"variable"',
+      'ex-09,"Siding Repair (10\'x10\')",975.00,"section"',
+      'ex-10,"Tree Trimming",450.00,"variable"',
+      'ex-11,"Tree Removal (w/o stump)",1450.00,"tree"',
+      'ex-12,"Stump Grinding",250.00,"stump"',
+      'ex-13,"Aluminum Window Paint (Int/Ext)",700.00,"house"',
+      'ex-14,"Windows (3x5 sash)",425.00,"ea."',
+      'ex-15,"Window Repair — Non-Insulated (6x6+)",35.00,"sf"',
+      'ex-16,"Window Repair — Insulated (6x6+)",40.00,"sf"',
+      'ex-17,"Aluminum Framed Window Pane",100.00,"pane"',
+      'ex-18,"Guttering",4.15,"LF"',
+      'ex-19,"Concrete w/ Demo",200.00,"sqft"',
+      'ex-20,"Mowing (summer, every 2 weeks)",45.00,"mowing"',
+      'ex-21,"Garage Door — 1 Car",975.00,"ea."',
+      'ex-22,"Garage Door — 2 Car (Installed)",1225.00,"ea."',
+      'ex-23,"Garage Conversion",8850.00,"ea."'
+    ].join("\n");
+
+    // Minimal CSV parser: handles quoted fields, commas-in-quotes, and "" escapes.
+    function parseCsvLine(line) {
+      var out = [], cur = "", inQ = false;
+      for (var i = 0; i < line.length; i++) {
+        var ch = line[i];
+        if (inQ) {
+          if (ch === '"') {
+            if (line[i + 1] === '"') { cur += '"'; i++; }
+            else inQ = false;
+          } else cur += ch;
+        } else {
+          if (ch === '"') inQ = true;
+          else if (ch === ",") { out.push(cur); cur = ""; }
+          else cur += ch;
+        }
+      }
+      out.push(cur);
+      return out;
+    }
+
+    var CATALOG = {};
+    CSV.split("\n").slice(1).forEach(function (line) {
+      if (!line) return;
+      var f = parseCsvLine(line);
+      CATALOG[f[0]] = { id: f[0], name: f[1], cost: parseFloat(f[2]), unit: f[3] };
+    });
+
+    var SECTIONS = ["Interior / General", "Kitchen", "Bathrooms",
+                    "Systems & Structure", "Exterior"];
+
+    // Verified group mapping. `supplemental` groups just give the remaining
+    // catalog items a proper home so every group has clean progress accounting.
+    var GROUPS = {
+      // ---------- Interior / General ----------
+      "ig:flooring": { label: "Flooring", section: "Interior / General",
+                       itemIds: ["ig-01","ig-02","ig-03","ig-04","ig-05","ig-06"] },
+      "ig:paint":    { label: "Paint & Wall Repair", section: "Interior / General",
+                       itemIds: ["ig-07","ig-08","ig-09"] },
+      "ig:doors":    { label: "Doors", section: "Interior / General",
+                       itemIds: ["ig-10","ig-11","ig-12","ig-13","ig-14","ig-15","ig-16","ig-17","ig-18"] },
+      "ig:pest":     { label: "Pest Control", section: "Interior / General",
+                       itemIds: ["ig-23","ig-24"] },
+      "ig:whole":    { label: "Whole House & Site Prep", section: "Interior / General", supplemental: true,
+                       itemIds: ["ig-19","ig-20","ig-21","ig-22","ig-25","ig-26","ig-27","ig-28"] },
+
+      // ---------- Kitchen ----------
+      "kt:cabinets":   { label: "Cabinets", section: "Kitchen",
+                         itemIds: ["kt-01","kt-02","kt-03","kt-04","kt-05"] },
+      "kt:counters":   { label: "Countertops & Tile", section: "Kitchen",
+                         itemIds: ["kt-06","kt-07","kt-08","kt-09","kt-10"] },
+      "kt:appliances": { label: "Appliances", section: "Kitchen",
+                         itemIds: ["kt-11","kt-12","kt-13","kt-14","kt-15","kt-16","kt-17"] },
+
+      // ---------- Bathrooms (instantiated per bathroom) ----------
+      "ba:vanity":   { label: "Vanity & Countertop", section: "Bathrooms",
+                       itemIds: ["ba-01","ba-02","ba-03","ba-14"] },
+      "ba:tub":      { label: "Tub & Shower", section: "Bathrooms",
+                       itemIds: ["ba-07","ba-08","ba-09","ba-10","ba-11","ba-12","ba-13"] },
+      "ba:tile":     { label: "Tile", section: "Bathrooms",
+                       itemIds: ["ba-05","ba-06"] },
+      "ba:fixtures": { label: "Fixtures", section: "Bathrooms", supplemental: true,
+                       itemIds: ["ba-04","ba-15","ba-16"] },
+
+      // ---------- Systems & Structure ----------
+      "sy:hvac":       { label: "HVAC", section: "Systems & Structure",
+                         itemIds: ["as-01","as-02","as-03","as-04","as-05","as-06","as-07"] },
+      "sy:electrical": { label: "Electrical", section: "Systems & Structure",
+                         itemIds: ["as-10","as-11","as-18","as-19","as-20","as-24"] },
+      "sy:structural": { label: "Structural", section: "Systems & Structure",
+                         itemIds: ["as-12","as-13","as-14","as-15","as-16"] },
+      "sy:insulation": { label: "Insulation & Drywall", section: "Systems & Structure",
+                         itemIds: ["as-21","as-22","as-23"] },
+      "sy:plumbing":   { label: "Plumbing & Water Heater", section: "Systems & Structure", supplemental: true,
+                         itemIds: ["as-08","as-09","as-17"] },
+
+      // ---------- Exterior ----------
+      "ex:fence":   { label: "Fence", section: "Exterior",
+                      itemIds: ["ex-01","ex-02","ex-03"] },
+      "ex:siding":  { label: "Siding", section: "Exterior",
+                      itemIds: ["ex-05","ex-06","ex-07","ex-08","ex-09"] },
+      "ex:windows": { label: "Windows", section: "Exterior",
+                      itemIds: ["ex-13","ex-14","ex-15","ex-16","ex-17"] },
+      "ex:garage":  { label: "Garage", section: "Exterior",
+                      itemIds: ["ex-21","ex-22","ex-23"] },
+      "ex:trees":   { label: "Trees", section: "Exterior",
+                      itemIds: ["ex-10","ex-11","ex-12"] },
+      "ex:grounds": { label: "Grounds, Gutters & Concrete", section: "Exterior", supplemental: true,
+                      itemIds: ["ex-04","ex-18","ex-19","ex-20"] },
+
+      // ---------- Room-type reuse groups ----------
+      // Reuse catalog items; per-room line keying keeps them independent.
+      "bd:closet":   { label: "Closet", section: "Interior / General",
+                       itemIds: ["ig-12","ig-11"] },
+      "lv:lighting": { label: "Lighting", section: "Interior / General",
+                       itemIds: ["ig-22"] }
+    };
+
+    var ROOM_TYPES = {
+      bathroom: { label: "Bathroom", multi: true,
+                  groups: ["ba:vanity","ba:tub","ba:tile","ba:fixtures"] },
+      kitchen:  { label: "Kitchen", multi: false,
+                  groups: ["kt:cabinets","kt:counters","kt:appliances"] },
+      interior: { label: "Interior / General", multi: false,
+                  groups: ["ig:flooring","ig:paint","ig:doors","ig:pest","ig:whole"] },
+      systems:  { label: "Systems & Structure", multi: false,
+                  groups: ["sy:hvac","sy:electrical","sy:structural","sy:insulation","sy:plumbing"] },
+      exterior: { label: "Exterior", multi: false,
+                  groups: ["ex:fence","ex:siding","ex:windows","ex:garage","ex:trees","ex:grounds"] },
+      bedroom:  { label: "Bedroom", multi: true,
+                  groups: ["ig:flooring","ig:paint","ig:doors","bd:closet"] },
+      living:   { label: "Living / Common", multi: true,
+                  groups: ["ig:flooring","ig:paint","ig:doors","lv:lighting"] }
+    };
+
+    // Order the room list sensibly regardless of creation order.
+    var TYPE_ORDER = ["interior", "kitchen", "bathroom", "bedroom", "living", "systems", "exterior"];
+    // Singletons are auto-created once and cannot be removed.
+    var SINGLETON_TYPES = ["interior", "kitchen", "systems", "exterior"];
+
+    return {
+      CATALOG: CATALOG, SECTIONS: SECTIONS, GROUPS: GROUPS,
+      ROOM_TYPES: ROOM_TYPES, TYPE_ORDER: TYPE_ORDER, SINGLETON_TYPES: SINGLETON_TYPES
+    };
+  })();
+
+  /* =================================================================
+   * 2) STORE — the ONLY place that touches localStorage and IndexedDB.
+   * ================================================================= */
+  var Store = (function () {
+    var KEY = "repairtally:v1";
+    var DB_NAME = "estimator-db";
+    var DB_VERSION = 1;
+    var PHOTO_STORE = "photos";
+    var RT = Catalog.ROOM_TYPES;
+    var GROUPS = Catalog.GROUPS;
+
+    var _db = null;
+    var _dbPromise = null;
+
+    function load() {
+      try {
+        var raw = localStorage.getItem(KEY);
+        return raw ? JSON.parse(raw) : null;
+      } catch (e) {
+        console.warn("Store.load failed:", e);
+        return null;
+      }
+    }
+
+    function save(root) {
+      try {
+        localStorage.setItem(KEY, JSON.stringify(root));
+      } catch (e) {
+        console.warn("Store.save failed:", e);
+      }
+    }
+
+    // Find which group(s) in a room type contain an item (for v1→v2 migration).
+    function groupsContainingItem(project, roomType, itemId) {
+      return RT[roomType].groups.filter(function (gid) {
+        var base = (GROUPS[gid].itemIds || []).filter(function (id) {
+          return project.removedItemIds.indexOf(id) === -1;
+        });
+        if (base.indexOf(itemId) !== -1) return true;
+        return Object.keys(project.customItems).some(function (id) {
+          return id === itemId && project.customItems[id].groupId === gid;
+        });
+      });
+    }
+
+    function migrateProjectLines(project) {
+      var next = {};
+      Object.keys(project.lines || {}).forEach(function (key) {
+        if (!isLegacyLineKey(key)) {
+          next[key] = project.lines[key];
+          return;
+        }
+        var parts = key.split(":");
+        var roomId = parts[0];
+        var itemId = parts[1];
+        var room = project.rooms.find(function (r) { return r.id === roomId; });
+        if (!room) return;
+        var matches = groupsContainingItem(project, room.type, itemId);
+        if (!matches.length) return;
+        // If the item appears in multiple groups, assign to the FIRST group in
+        // the room type's group list; other groups start unset.
+        var groupId = RT[room.type].groups.find(function (gid) {
+          return matches.indexOf(gid) !== -1;
+        }) || matches[0];
+        var newKey = lineKey(roomId, groupId, itemId);
+        next[newKey] = project.lines[key];
+      });
+      project.lines = next;
+      if (!project.photos) project.photos = [];
+    }
+
+    function migrate(data) {
+      if (!data || typeof data !== "object") return null;
+      if (!data.schemaVersion) data.schemaVersion = 1;
+      while (data.schemaVersion < SCHEMA_VERSION) {
+        if (data.schemaVersion === 1) {
+          (data.projects || []).forEach(migrateProjectLines);
+          data.schemaVersion = 2;
+        } else {
+          data.schemaVersion++;
+        }
+      }
+      (data.projects || []).forEach(function (p) { if (!p.photos) p.photos = []; });
+      return data;
+    }
+
+    /* ---- IndexedDB promise helpers ---- */
+    function openDB() {
+      if (_dbPromise) return _dbPromise;
+      _dbPromise = new Promise(function (resolve, reject) {
+        if (!window.indexedDB) {
+          reject(new Error("IndexedDB unavailable"));
+          return;
+        }
+        var req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = function (e) {
+          var db = e.target.result;
+          if (!db.objectStoreNames.contains(PHOTO_STORE)) {
+            var store = db.createObjectStore(PHOTO_STORE, { keyPath: "id" });
+            store.createIndex("projectId", "projectId", { unique: false });
+          }
+        };
+        req.onsuccess = function (e) {
+          _db = e.target.result;
+          resolve(_db);
+        };
+        req.onerror = function () { reject(req.error || new Error("IDB open failed")); };
+      });
+      return _dbPromise;
+    }
+
+    function idbTx(mode) {
+      return openDB().then(function (db) {
+        return db.transaction(PHOTO_STORE, mode).objectStore(PHOTO_STORE);
+      });
+    }
+
+    function idbPut(record) {
+      return idbTx("readwrite").then(function (store) {
+        return new Promise(function (resolve, reject) {
+          var req = store.put(record);
+          req.onsuccess = function () { resolve(record); };
+          req.onerror = function () { reject(req.error); };
+        });
+      });
+    }
+
+    function idbGet(id) {
+      return idbTx("readonly").then(function (store) {
+        return new Promise(function (resolve, reject) {
+          var req = store.get(id);
+          req.onsuccess = function () { resolve(req.result || null); };
+          req.onerror = function () { reject(req.error); };
+        });
+      });
+    }
+
+    function idbDelete(id) {
+      return idbTx("readwrite").then(function (store) {
+        return new Promise(function (resolve, reject) {
+          var req = store.delete(id);
+          req.onsuccess = function () { resolve(); };
+          req.onerror = function () { reject(req.error); };
+        });
+      });
+    }
+
+    function idbGetAllByProject(projectId) {
+      return idbTx("readonly").then(function (store) {
+        return new Promise(function (resolve, reject) {
+          var idx = store.index("projectId");
+          var req = idx.getAll(projectId);
+          req.onsuccess = function () { resolve(req.result || []); };
+          req.onerror = function () { reject(req.error); };
+        });
+      });
+    }
+
+    function savePhoto(record) {
+      try {
+        return idbPut(record);
+      } catch (e) {
+        return Promise.reject(e);
+      }
+    }
+
+    function getPhoto(id) { return idbGet(id); }
+
+    function deletePhoto(id) {
+      try {
+        return idbDelete(id);
+      } catch (e) {
+        return Promise.reject(e);
+      }
+    }
+
+    function getPhotosForProject(projectId) {
+      return idbGetAllByProject(projectId);
+    }
+
+    // `project.photos` metadata is the single authority for what exists.
+    // Returns only IDB records whose id has a metadata entry, sorted in
+    // metadata order; any record WITHOUT one is an orphan and gets deleted
+    // opportunistically (fire-and-forget).
+    function getLivePhotosForProject(project) {
+      var metas = (project && project.photos) || [];
+      var order = {};
+      metas.forEach(function (m, i) { order[m.id] = i; });
+      return idbGetAllByProject(project.id).then(function (records) {
+        var live = [];
+        records.forEach(function (rec) {
+          if (hasOwn(order, rec.id)) {
+            live.push(rec);
+          } else {
+            idbDelete(rec.id).catch(function (err) {
+              console.warn("Failed to delete orphan photo " + rec.id + ":", err);
+            });
+          }
+        });
+        live.sort(function (a, b) { return order[a.id] - order[b.id]; });
+        return live;
+      });
+    }
+
+    function deletePhotosForProject(projectId) {
+      return idbGetAllByProject(projectId).then(function (rows) {
+        return Promise.all(rows.map(function (r) { return idbDelete(r.id); }));
+      });
+    }
+
+    return {
+      load: load, save: save, migrate: migrate, openDB: openDB,
+      savePhoto: savePhoto, getPhoto: getPhoto, deletePhoto: deletePhoto,
+      getPhotosForProject: getPhotosForProject, getLivePhotosForProject: getLivePhotosForProject,
+      deletePhotosForProject: deletePhotosForProject
+    };
+  })();
+
+  /* =================================================================
+   * 2b) PHOTOS — capture + image processing (no storage; uses Store).
+   * ================================================================= */
+  var Photos = (function () {
+    function openFilePicker(multiple, onFiles) {
+      var input = document.createElement("input");
+      input.type = "file";
+      input.accept = "image/*";
+      input.setAttribute("capture", "environment");
+      if (multiple) input.multiple = true;
+      input.style.cssText = "position:fixed;left:-9999px;opacity:0";
+      document.body.appendChild(input);
+      input.addEventListener("change", function () {
+        var files = input.files ? Array.prototype.slice.call(input.files) : [];
+        if (input.parentNode) input.parentNode.removeChild(input);
+        if (files.length) onFiles(files);
+      });
+      input.click();
+    }
+
+    function loadBitmapFallback(file) {
+      return new Promise(function (resolve, reject) {
+        var url = URL.createObjectURL(file);
+        var img = new Image();
+        img.onload = function () {
+          URL.revokeObjectURL(url);
+          resolve(img);
+        };
+        img.onerror = function () {
+          URL.revokeObjectURL(url);
+          reject(new Error("decode failed"));
+        };
+        img.src = url;
+      });
+    }
+
+    function decodeBitmap(file) {
+      if (typeof createImageBitmap === "function") {
+        return createImageBitmap(file, { imageOrientation: "from-image" })
+          .catch(function () { return createImageBitmap(file); });
+      }
+      return loadBitmapFallback(file);
+    }
+
+    function canvasToBlob(canvas, quality) {
+      return new Promise(function (resolve) {
+        canvas.toBlob(function (b) { resolve(b); }, "image/jpeg", quality);
+      });
+    }
+
+    function drawScaled(source, maxEdge) {
+      var w = source.width, h = source.height;
+      var scale = Math.min(1, maxEdge / Math.max(w, h));
+      var cw = Math.round(w * scale), ch = Math.round(h * scale);
+      var canvas = document.createElement("canvas");
+      canvas.width = cw;
+      canvas.height = ch;
+      canvas.getContext("2d").drawImage(source, 0, 0, cw, ch);
+      return canvas;
+    }
+
+    function processFile(file) {
+      return decodeBitmap(file).then(function (bitmap) {
+        var fullCanvas = drawScaled(bitmap, 1600);
+        var thumbCanvas = drawScaled(bitmap, 240);
+        if (bitmap.close) bitmap.close();
+        return Promise.all([
+          canvasToBlob(fullCanvas, 0.8),
+          canvasToBlob(thumbCanvas, 0.7)
+        ]).then(function (blobs) {
+          if (!blobs[0] || !blobs[1]) throw new Error("encode failed");
+          return { full: blobs[0], thumb: blobs[1] };
+        });
+      });
+    }
+
+    function processFilesSequential(files, onProgress) {
+      var i = 0, results = [];
+      function next() {
+        if (i >= files.length) return Promise.resolve(results);
+        var file = files[i++];
+        if (onProgress) onProgress(i - 1, files.length);
+        return processFile(file).then(function (blobs) {
+          results.push(blobs);
+          return next();
+        });
+      }
+      return next();
+    }
+
+    return { openFilePicker: openFilePicker, processFilesSequential: processFilesSequential };
+  })();
+
+  /* =================================================================
+   * 3) STATE — in-memory app state + all mutations. Persists via Store.
+   * ================================================================= */
+  var State = (function () {
+    var RT = Catalog.ROOM_TYPES;
+
+    var self = {
+      root: null,
+      // View state is transient (not persisted).
+      ui: { screen: "rooms", roomId: null, collapsed: {} },
+      _saveTimer: null,
+      _renderKey: null
+    };
+
+    /* ---- construction helpers ---- */
+    function newProject(name) {
+      var now = Date.now();
+      var p = {
+        id: uid("p_"), name: name, createdAt: now, updatedAt: now,
+        schemaVersion: SCHEMA_VERSION,
+        rooms: [], lines: {}, priceOverrides: {}, customItems: {},
+        removedItemIds: [], groupState: {}, photos: []
+      };
+      // Singletons first, then one of each default multi room.
+      Catalog.SINGLETON_TYPES.forEach(function (t) { addRoomTo(p, t); });
+      ["bathroom", "bedroom", "living"].forEach(function (t) { addRoomTo(p, t); });
+      return p;
+    }
+
+    // Auto-label multi rooms "Bathroom 1", "Bathroom 2", ... avoiding collisions
+    // even after removals/renames.
+    function nextRoomLabel(p, type) {
+      var base = RT[type].label;
+      var same = p.rooms.filter(function (r) { return r.type === type; });
+      var re = new RegExp("^" + escapeRegex(base) + "\\s+(\\d+)$");
+      var max = 0;
+      same.forEach(function (r) {
+        var m = r.label.match(re);
+        if (m) max = Math.max(max, parseInt(m[1], 10));
+      });
+      var n = Math.max(max + 1, same.length + 1);
+      var label = base + " " + n;
+      while (same.some(function (r) { return r.label === label; })) { n++; label = base + " " + n; }
+      return label;
+    }
+
+    function addRoomTo(p, type) {
+      var rt = RT[type];
+      var label = rt.multi ? nextRoomLabel(p, type) : rt.label;
+      var room = { id: uid("r_"), type: type, label: label };
+      p.rooms.push(room);
+      return room;
+    }
+
+    function ensureLine(p, roomId, groupId, itemId) {
+      var k = lineKey(roomId, groupId, itemId);
+      if (!p.lines[k]) p.lines[k] = { checked: false, qty: 0 };
+      return p.lines[k];
+    }
+    function ensureGroup(p, roomId, groupId) {
+      var k = groupKey(roomId, groupId);
+      if (!p.groupState[k]) p.groupState[k] = { noAction: false };
+      return p.groupState[k];
+    }
+
+    /* ---- lifecycle ---- */
+    self.init = function () {
+      var data = Store.load();
+      if (!data) {
+        self.root = seed();
+        Store.save(self.root);
+      } else {
+        var prevVer = data.schemaVersion || 1;
+        self.root = Store.migrate(data);
+        if (prevVer < SCHEMA_VERSION) Store.save(self.root);
+      }
+      if (!self.activeProject()) {
+        self.root.activeProjectId = self.root.projects[0] ? self.root.projects[0].id : null;
+      }
+      self.ui.screen = "rooms";
+      self.ui.roomId = null;
+    };
+
+    function seed() {
+      var standardPrices = {};
+      Object.keys(Catalog.CATALOG).forEach(function (id) {
+        standardPrices[id] = Catalog.CATALOG[id].cost;
+      });
+      var root = { schemaVersion: SCHEMA_VERSION, standardPrices: standardPrices, projects: [], activeProjectId: null };
+      var p = newProject("Property 1");
+      root.projects.push(p);
+      root.activeProjectId = p.id;
+      return root;
+    }
+
+    /* ---- accessors ---- */
+    self.activeProject = function () {
+      return self.root.projects.find(function (p) { return p.id === self.root.activeProjectId; }) || null;
+    };
+    self.currentRoom = function () {
+      var p = self.activeProject();
+      if (!p) return null;
+      return p.rooms.find(function (r) { return r.id === self.ui.roomId; }) || null;
+    };
+    self.standardPrices = function () { return self.root.standardPrices; };
+
+    /* ---- persistence ---- */
+    function touch(p) { if (p) p.updatedAt = Date.now(); self.scheduleSave(); }
+    self.scheduleSave = function () {
+      clearTimeout(self._saveTimer);
+      self._saveTimer = setTimeout(function () { Store.save(self.root); }, 500);
+    };
+    self.flush = function () { clearTimeout(self._saveTimer); Store.save(self.root); };
+
+    /* ---- project mutations ---- */
+    self.createProject = function (name) {
+      var p = newProject(name);
+      self.root.projects.push(p);
+      self.root.activeProjectId = p.id;
+      self.ui.roomId = null;
+      touch(p);
+      return p;
+    };
+    self.renameProject = function (id, name) {
+      var p = self.root.projects.find(function (x) { return x.id === id; });
+      if (p) { p.name = name; touch(p); }
+    };
+    self.deleteProject = function (id) {
+      return Store.deletePhotosForProject(id).catch(function () {}).then(function () {
+        self.root.projects = self.root.projects.filter(function (p) { return p.id !== id; });
+        if (self.root.projects.length === 0) {
+          var np = newProject("Property 1");
+          self.root.projects.push(np);
+          self.root.activeProjectId = np.id;
+        } else if (self.root.activeProjectId === id) {
+          self.root.activeProjectId = self.root.projects[0].id;
+        }
+        self.scheduleSave();
+      });
+    };
+    self.switchProject = function (id) {
+      self.root.activeProjectId = id;
+      self.ui.roomId = null;
+      self.scheduleSave();
+    };
+
+    /* ---- room mutations ---- */
+    self.addRoom = function (type) {
+      var p = self.activeProject();
+      var room = addRoomTo(p, type);
+      touch(p);
+      return room;
+    };
+    self.removeRoom = function (roomId) {
+      var p = self.activeProject();
+      p.rooms = p.rooms.filter(function (r) { return r.id !== roomId; });
+      var prefix = roomId + ":";
+      Object.keys(p.lines).forEach(function (k) { if (k.indexOf(prefix) === 0) delete p.lines[k]; });
+      Object.keys(p.groupState).forEach(function (k) { if (k.indexOf(prefix) === 0) delete p.groupState[k]; });
+      // Drop photo metadata tied to lines in this room AND delete the backing
+      // IndexedDB records, otherwise they linger as orphans (ghost gallery
+      // entries and stray files in the export ZIP).
+      if (p.photos) {
+        var removedIds = [];
+        p.photos = p.photos.filter(function (ph) {
+          if (!ph.lineKey || ph.lineKey.indexOf(prefix) !== 0) return true;
+          removedIds.push(ph.id);
+          return false;
+        });
+        // Fire-and-forget: don't block the UI on IDB deletes.
+        removedIds.forEach(function (id) {
+          Store.deletePhoto(id).catch(function (err) {
+            console.warn("Failed to delete photo record " + id + ":", err);
+          });
+        });
+      }
+      touch(p);
+    };
+    self.renameRoom = function (roomId, label) {
+      var p = self.activeProject();
+      var r = p.rooms.find(function (x) { return x.id === roomId; });
+      if (r) { r.label = label; touch(p); }
+    };
+
+    /* ---- line mutations ---- */
+    self.toggleLine = function (roomId, groupId, itemId, checked) {
+      var p = self.activeProject();
+      var l = ensureLine(p, roomId, groupId, itemId);
+      l.checked = checked;
+      if (checked) {
+        var gs = p.groupState[groupKey(roomId, groupId)];
+        if (gs) gs.noAction = false;
+      }
+      touch(p);
+    };
+    self.setQty = function (roomId, groupId, itemId, raw) {
+      var p = self.activeProject();
+      var l = ensureLine(p, roomId, groupId, itemId);
+      var n = parseFloat(raw);
+      l.qty = (isNaN(n) || n < 0) ? 0 : n;
+      touch(p);
+    };
+
+    /* ---- group mutations ---- */
+    self.toggleNoAction = function (roomId, groupId) {
+      var p = self.activeProject();
+      var gs = ensureGroup(p, roomId, groupId);
+      gs.noAction = !gs.noAction;
+      if (gs.noAction) {
+        Calc.groupItemIds(p, groupId).forEach(function (id) {
+          var l = p.lines[lineKey(roomId, groupId, id)];
+          if (l) l.checked = false;
+        });
+      }
+      touch(p);
+    };
+
+    /* ---- price mutations ---- */
+    self.setPriceOverride = function (itemId, cost) {
+      var p = self.activeProject();
+      p.priceOverrides[itemId] = cost;
+      touch(p);
+    };
+    self.revertOverride = function (itemId) {
+      var p = self.activeProject();
+      delete p.priceOverrides[itemId];
+      touch(p);
+    };
+    self.setStandardPrice = function (itemId, cost) {
+      // Global across all projects.
+      self.root.standardPrices[itemId] = cost;
+      touch(self.activeProject());
+    };
+    self.setCustomCost = function (itemId, cost) {
+      var p = self.activeProject();
+      if (p.customItems[itemId]) { p.customItems[itemId].cost = cost; touch(p); }
+    };
+
+    /* ---- item add/remove ---- */
+    self.addCustomItem = function (groupId, def) {
+      var p = self.activeProject();
+      var id = uid("cst_");
+      p.customItems[id] = { name: def.name, cost: def.cost, unit: def.unit, groupId: groupId };
+      touch(p);
+      return id;
+    };
+    self.removeItem = function (itemId) {
+      var p = self.activeProject();
+      if (p.customItems[itemId]) {
+        delete p.customItems[itemId];               // custom item: delete outright
+      } else if (p.removedItemIds.indexOf(itemId) === -1) {
+        p.removedItemIds.push(itemId);              // default item: hide it
+      }
+      // Clean up any per-room line state for this item across the project.
+      Object.keys(p.lines).forEach(function (k) {
+        var parsed = parseLineKey(k);
+        if (parsed && parsed[2] === itemId) delete p.lines[k];
+      });
+      delete p.priceOverrides[itemId];
+      touch(p);
+    };
+
+    /* ---- photo mutations ---- */
+    self.photoCountForLine = function (lineKeyStr) {
+      var p = self.activeProject();
+      if (!p || !p.photos) return 0;
+      return p.photos.filter(function (ph) { return ph.lineKey === lineKeyStr; }).length;
+    };
+
+    self.addPhotos = function (files, opts) {
+      opts = opts || {};
+      var p = self.activeProject();
+      if (!p || !files.length) return Promise.resolve([]);
+      if (!p.photos) p.photos = [];
+      var projectId = p.id;
+      var defaultLabel = opts.label || "Project photo";
+      var lineKeyStr = opts.lineKey || null;
+
+      return Photos.processFilesSequential(files).then(function (blobsList) {
+        var added = [];
+        return blobsList.reduce(function (chain, blobs) {
+          return chain.then(function () {
+            var id = uid("ph_");
+            var meta = {
+              id: id, label: defaultLabel, lineKey: lineKeyStr, createdAt: Date.now()
+            };
+            var record = {
+              id: id, projectId: projectId, full: blobs.full, thumb: blobs.thumb,
+              label: meta.label, lineKey: lineKeyStr, createdAt: meta.createdAt
+            };
+            return Store.savePhoto(record).then(function () {
+              p.photos.push(meta);
+              added.push(meta);
+              touch(p);
+            }).catch(function () {
+              throw new Error("save failed");
+            });
+          });
+        }, Promise.resolve()).then(function () { return added; });
+      });
+    };
+
+    self.deletePhoto = function (photoId) {
+      var p = self.activeProject();
+      if (!p || !p.photos) return Promise.resolve();
+      return Store.deletePhoto(photoId).then(function () {
+        p.photos = p.photos.filter(function (ph) { return ph.id !== photoId; });
+        touch(p);
+      });
+    };
+
+    self.updatePhotoLabel = function (photoId, label) {
+      var p = self.activeProject();
+      if (!p || !p.photos) return Promise.resolve();
+      var meta = p.photos.find(function (ph) { return ph.id === photoId; });
+      if (!meta) return Promise.resolve();
+      meta.label = label;
+      touch(p);
+      return Store.getPhoto(photoId).then(function (rec) {
+        if (!rec) return;
+        rec.label = label;
+        return Store.savePhoto(rec);
+      });
+    };
+
+    return self;
+  })();
+
+  /* =================================================================
+   * 4) CALC — pure functions only (no DOM, no storage). Unit-testable.
+   *    Reads static Catalog constants + the project/standardPrices args.
+   * ================================================================= */
+  var Calc = (function () {
+    var CATALOG = Catalog.CATALOG, GROUPS = Catalog.GROUPS, RT = Catalog.ROOM_TYPES;
+
+    // Item definition, whether a catalog default or a project custom item.
+    function itemDef(project, itemId) {
+      if (CATALOG[itemId]) {
+        return { id: itemId, name: CATALOG[itemId].name, unit: CATALOG[itemId].unit,
+                 base: CATALOG[itemId].cost, custom: false };
+      }
+      var c = project.customItems[itemId];
+      if (c) return { id: itemId, name: c.name, unit: c.unit, base: c.cost, custom: true, groupId: c.groupId };
+      return { id: itemId, name: "(unknown)", unit: "", base: 0, custom: false };
+    }
+
+    // Price resolution order: project override -> standardPrices -> CATALOG/custom default.
+    function effectiveCost(project, standardPrices, itemId) {
+      if (hasOwn(project.priceOverrides, itemId)) return project.priceOverrides[itemId];
+      if (standardPrices[itemId] != null) return standardPrices[itemId];
+      if (project.customItems[itemId]) return project.customItems[itemId].cost;
+      if (CATALOG[itemId]) return CATALOG[itemId].cost;
+      return 0;
+    }
+    // The "standard" (non-override) cost, for the revert / override display.
+    function standardCost(project, standardPrices, itemId) {
+      if (standardPrices[itemId] != null) return standardPrices[itemId];
+      if (project.customItems[itemId]) return project.customItems[itemId].cost;
+      if (CATALOG[itemId]) return CATALOG[itemId].cost;
+      return 0;
+    }
+
+    // Items shown in a group instance = catalog items (minus removed) + customs.
+    function groupItemIds(project, groupId) {
+      var base = (GROUPS[groupId].itemIds || []).filter(function (id) {
+        return project.removedItemIds.indexOf(id) === -1;
+      });
+      var customs = Object.keys(project.customItems).filter(function (id) {
+        return project.customItems[id].groupId === groupId;
+      });
+      return base.concat(customs);
+    }
+
+    // Line total = qty x effective cost, only when checked and qty > 0.
+    function lineTotal(project, standardPrices, lineKeyStr) {
+      var ls = project.lines[lineKeyStr];
+      if (!ls || !ls.checked || !(ls.qty > 0)) return 0;
+      var parsed = parseLineKey(lineKeyStr);
+      if (!parsed) return 0;
+      return round2(ls.qty * effectiveCost(project, standardPrices, parsed[2]));
+    }
+
+    function groupSubtotal(project, standardPrices, roomId, groupId) {
+      return round2(groupItemIds(project, groupId).reduce(function (s, id) {
+        return s + lineTotal(project, standardPrices, lineKey(roomId, groupId, id));
+      }, 0));
+    }
+    function roomSubtotal(project, standardPrices, room) {
+      var prefix = room.id + ":";
+      return round2(Object.keys(project.lines).reduce(function (s, k) {
+        if (k.indexOf(prefix) !== 0) return s;
+        return s + lineTotal(project, standardPrices, k);
+      }, 0));
+    }
+    function grandTotal(project, standardPrices) {
+      return round2(project.rooms.reduce(function (s, room) {
+        return s + roomSubtotal(project, standardPrices, room);
+      }, 0));
+    }
+
+    // A group is complete if noAction is set OR at least one item is checked.
+    function isGroupComplete(project, roomId, groupId) {
+      var gs = project.groupState[groupKey(roomId, groupId)];
+      if (gs && gs.noAction) return true;
+      return groupItemIds(project, groupId).some(function (id) {
+        var ls = project.lines[lineKey(roomId, groupId, id)];
+        return !!(ls && ls.checked);
+      });
+    }
+    function roomProgress(project, room) {
+      var groups = RT[room.type].groups, complete = 0;
+      groups.forEach(function (g) { if (isGroupComplete(project, room.id, g)) complete++; });
+      return { complete: complete, total: groups.length };
+    }
+    // Denominator = total group instances across all rooms (a bathroom adds 4,
+    // a bedroom adds 4, ...).
+    function projectProgress(project) {
+      var complete = 0, total = 0;
+      project.rooms.forEach(function (room) {
+        var rp = roomProgress(project, room);
+        complete += rp.complete; total += rp.total;
+      });
+      return { complete: complete, total: total, pct: total ? Math.round(complete / total * 100) : 0 };
+    }
+
+    // The ONE definition of room display order (TYPE_ORDER stable sort),
+    // shared by the UI and the exporter so screen and spreadsheet agree.
+    function displayRooms(project) {
+      return project.rooms.slice().sort(function (a, b) {
+        return Catalog.TYPE_ORDER.indexOf(a.type) - Catalog.TYPE_ORDER.indexOf(b.type);
+      });
+    }
+
+    // Plain-data enumeration of every checked line — the export builds on this.
+    function enumerateLines(project, standardPrices) {
+      var out = [];
+      displayRooms(project).forEach(function (room) {
+        RT[room.type].groups.forEach(function (gid) {
+          groupItemIds(project, gid).forEach(function (id) {
+            var lk = lineKey(room.id, gid, id);
+            var ls = project.lines[lk];
+            if (ls && ls.checked && ls.qty > 0) {
+              var def = itemDef(project, id);
+              var cost = effectiveCost(project, standardPrices, id);
+              out.push({
+                roomId: room.id, roomLabel: room.label, groupId: gid,
+                groupLabel: GROUPS[gid] ? GROUPS[gid].label : gid,
+                overridden: hasOwn(project.priceOverrides, id),
+                lineKey: lk, itemId: id, name: def.name,
+                unit: def.unit, qty: ls.qty, cost: cost, total: round2(ls.qty * cost)
+              });
+            }
+          });
+        });
+      });
+      return out;
+    }
+
+    return {
+      itemDef: itemDef, effectiveCost: effectiveCost, standardCost: standardCost,
+      groupItemIds: groupItemIds, lineTotal: lineTotal,
+      groupSubtotal: groupSubtotal, roomSubtotal: roomSubtotal, grandTotal: grandTotal,
+      isGroupComplete: isGroupComplete, roomProgress: roomProgress,
+      projectProgress: projectProgress, displayRooms: displayRooms,
+      enumerateLines: enumerateLines
+    };
+  })();
+
+  /* =================================================================
+   * 4b) EXPORTER — styled Excel workbook + photos, zipped. Uses the
+   *     vendor libs (xlsx-js-style, JSZip) loaded from disk; async.
+   * ================================================================= */
+  var Exporter = (function () {
+    var available = !!(window.XLSX && window.JSZip);
+    if (!available) {
+      console.warn("Export unavailable — vendor files missing (expected vendor/xlsx.bundle.js and vendor/jszip.min.js).");
+    }
+
+    var C = {
+      teal: "0F3B46", green: "1F8F66", headTint: "E2EEF1", subTint: "E3F3EC",
+      metaTint: "F5F8FA", text: "17242E", muted: "74889A", white: "FFFFFF",
+      border: "C6D2DB"
+    };
+    var CURRENCY = '"$"#,##0.00';
+
+    function pad2(n) { return (n < 10 ? "0" : "") + n; }
+
+    // Filesystem-safe names: strip reserved chars, collapse whitespace,
+    // cap length, never empty.
+    function sanitizeName(s, fallback) {
+      s = String(s == null ? "" : s)
+        .replace(/[\/\\:*?"<>|]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (s.length > 60) s = s.slice(0, 60).trim();
+      return s || fallback;
+    }
+
+    function thinBorder() {
+      var edge = { style: "thin", color: { rgb: C.border } };
+      return { top: edge, bottom: edge, left: edge, right: edge };
+    }
+    function solidFill(rgb) { return { patternType: "solid", fgColor: { rgb: rgb } }; }
+
+    function buildWorkbook(project, standardPrices) {
+      var lines = Calc.enumerateLines(project, standardPrices);
+      var anyOverride = lines.some(function (l) { return l.overridden; });
+
+      var rows = [];      // array of arrays of cell objects (sparse ok)
+      var merges = [];
+      var rowHeights = [];
+
+      function push(cells, hpt) {
+        rowHeights.push(hpt ? { hpt: hpt } : {});
+        rows.push(cells);
+        return rows.length - 1;
+      }
+      // Merged band: style every covered cell so the fill spans the range.
+      function bandRow(text, style, hpt, mergeTo) {
+        var cells = [];
+        for (var c = 0; c < 6; c++) cells.push({ v: c === 0 ? text : "", t: "s", s: style });
+        var r = push(cells, hpt);
+        merges.push({ s: { r: r, c: 0 }, e: { r: r, c: mergeTo == null ? 5 : mergeTo } });
+        return r;
+      }
+
+      // Title
+      bandRow("REPAIRTALLY \u2014 REPAIR ESTIMATE", {
+        font: { bold: true, sz: 14, color: { rgb: C.white } },
+        fill: solidFill(C.teal),
+        alignment: { horizontal: "left", vertical: "center" }
+      }, 28);
+
+      // Meta
+      var longDate = new Date().toLocaleDateString(undefined, {
+        year: "numeric", month: "long", day: "numeric"
+      });
+      bandRow("Property: " + project.name + "    Date: " + longDate, {
+        font: { sz: 10, color: { rgb: C.muted } },
+        fill: solidFill(C.metaTint),
+        alignment: { horizontal: "left", vertical: "center" }
+      }, 18);
+
+      push([]); // blank
+
+      var HEADERS = ["Repair Item", "Group", "Unit", "Unit Cost", "Qty", "Line Total"];
+      var headStyle = function (right) {
+        return {
+          font: { bold: true, color: { rgb: C.text } },
+          fill: solidFill(C.headTint),
+          border: thinBorder(),
+          alignment: { horizontal: right ? "right" : "left", vertical: "center" }
+        };
+      };
+
+      Calc.displayRooms(project).forEach(function (room) {
+        var roomLines = lines.filter(function (l) { return l.roomId === room.id; });
+        if (!roomLines.length) return;
+
+        // Room header
+        bandRow(room.label, {
+          font: { bold: true, color: { rgb: C.white } },
+          fill: solidFill(C.green),
+          alignment: { horizontal: "left", vertical: "center" }
+        }, 20);
+
+        // Column headers
+        push(HEADERS.map(function (h, i) {
+          return { v: h, t: "s", s: headStyle(i >= 3) };
+        }), 18);
+
+        // Lines (enumeration order keeps groups contiguous)
+        roomLines.forEach(function (l) {
+          push([
+            { v: l.name + (l.overridden ? "*" : ""), t: "s",
+              s: { font: { color: { rgb: C.text } }, border: thinBorder() } },
+            { v: l.groupLabel, t: "s",
+              s: { font: { sz: 10, color: { rgb: C.muted } }, border: thinBorder() } },
+            { v: l.unit, t: "s",
+              s: { font: { color: { rgb: C.text } }, border: thinBorder() } },
+            { v: l.cost, t: "n",
+              s: { numFmt: CURRENCY, font: { color: { rgb: C.text } }, border: thinBorder(),
+                   alignment: { horizontal: "right" } } },
+            { v: l.qty, t: "n",
+              s: { font: { color: { rgb: C.text } }, border: thinBorder(),
+                   alignment: { horizontal: "right" } } },
+            { v: l.total, t: "n",
+              s: { numFmt: CURRENCY, font: { color: { rgb: C.text } }, border: thinBorder(),
+                   alignment: { horizontal: "right" } } }
+          ]);
+        });
+
+        // Room subtotal
+        var subtotal = round2(roomLines.reduce(function (s, l) { return s + l.total; }, 0));
+        var subStyle = {
+          font: { bold: true, color: { rgb: C.text } },
+          fill: solidFill(C.subTint),
+          alignment: { horizontal: "left", vertical: "center" }
+        };
+        var cells = [];
+        for (var c = 0; c < 5; c++) cells.push({ v: c === 0 ? room.label + " subtotal" : "", t: "s", s: subStyle });
+        cells.push({ v: subtotal, t: "n",
+          s: { numFmt: CURRENCY, font: { bold: true, color: { rgb: C.text } },
+               fill: solidFill(C.subTint), alignment: { horizontal: "right" } } });
+        var r = push(cells, 18);
+        merges.push({ s: { r: r, c: 0 }, e: { r: r, c: 4 } });
+
+        push([]); // blank
+      });
+
+      // Grand total — MUST equal Calc.grandTotal: sum the enumeration totals,
+      // never re-derive with independent logic.
+      var grand = round2(lines.reduce(function (s, l) { return s + l.total; }, 0));
+      var gtStyle = {
+        font: { bold: true, sz: 13, color: { rgb: C.white } },
+        fill: solidFill(C.teal),
+        alignment: { horizontal: "left", vertical: "center" }
+      };
+      var gtCells = [];
+      for (var gc = 0; gc < 5; gc++) gtCells.push({ v: gc === 0 ? "TOTAL ESTIMATE" : "", t: "s", s: gtStyle });
+      gtCells.push({ v: grand, t: "n",
+        s: { numFmt: CURRENCY, font: { bold: true, sz: 13, color: { rgb: C.white } },
+             fill: solidFill(C.teal), alignment: { horizontal: "right", vertical: "center" } } });
+      var gtRow = push(gtCells, 24);
+      merges.push({ s: { r: gtRow, c: 0 }, e: { r: gtRow, c: 4 } });
+
+      if (anyOverride) {
+        bandRow("* unit cost adjusted for this project (standard price list otherwise)", {
+          font: { sz: 10, italic: true, color: { rgb: C.muted } },
+          alignment: { horizontal: "left" }
+        }, 16);
+      }
+
+      // Sparse cell matrix -> worksheet
+      var ws = {};
+      rows.forEach(function (cellsRow, rr) {
+        cellsRow.forEach(function (cell, cc) {
+          if (cell) ws[XLSX.utils.encode_cell({ r: rr, c: cc })] = cell;
+        });
+      });
+      ws["!ref"] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: rows.length - 1, c: 5 } });
+      ws["!merges"] = merges;
+      ws["!cols"] = [{ wch: 40 }, { wch: 22 }, { wch: 14 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+      ws["!rows"] = rowHeights;
+
+      var wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Estimate");
+      return wb;
+    }
+
+    function exportProject(project, standardPrices) {
+      return Promise.resolve().then(function () {
+        var wb = buildWorkbook(project, standardPrices);
+        var xlsxData = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+
+        var zip = new JSZip();
+        zip.file("estimate.xlsx", xlsxData);
+
+        // Photos: metadata-filtered records (Task 0a), in metadata order,
+        // full-size blobs, 2-digit index prefix so duplicate labels never collide.
+        return Store.getLivePhotosForProject(project)
+          .catch(function (err) {
+            console.warn("Export: could not read photos, continuing without:", err);
+            return [];
+          })
+          .then(function (records) {
+            if (records.length) {
+              var folder = zip.folder("photos");
+              records.forEach(function (rec, i) {
+                var name = pad2(i + 1) + "-" + sanitizeName(rec.label, "photo") + ".jpg";
+                folder.file(name, rec.full);
+              });
+            }
+            return zip.generateAsync({ type: "blob", mimeType: "application/zip" });
+          })
+          .then(function (blob) {
+            var d = new Date();
+            var ymd = d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+            var filename = "Estimate - " + sanitizeName(project.name, "estimate") + " - " + ymd + ".zip";
+            return { blob: blob, filename: filename };
+          });
+      });
+    }
+
+    return { available: available, exportProject: exportProject, sanitizeName: sanitizeName };
+  })();
+
+  /* =================================================================
+   * 5) UI — rendering. Full re-render for structural changes; targeted
+   *    in-place updates for qty keystrokes (see refreshTotals).
+   * ================================================================= */
+  var UI = (function () {
+    var RT = Catalog.ROOM_TYPES, GROUPS = Catalog.GROUPS;
+    var app = document.getElementById("app");
+    var modalRoot = document.getElementById("modal-root");
+    var _objectUrls = [];
+    var _viewerUrl = null;
+
+    function sp() { return State.standardPrices(); }
+
+    function trackUrl(url) { _objectUrls.push(url); return url; }
+    function revokeAllUrls() {
+      _objectUrls.forEach(function (u) { URL.revokeObjectURL(u); });
+      _objectUrls = [];
+      if (_viewerUrl) { URL.revokeObjectURL(_viewerUrl); _viewerUrl = null; }
+    }
+
+    /* ---------- header ---------- */
+    function headerHTML(project, leftAction, leftLabel) {
+      var gt = Calc.grandTotal(project, sp());
+      var pr = Calc.projectProgress(project);
+      return '' +
+        '<header class="appbar">' +
+          '<div class="appbar-row">' +
+            '<button class="btn-ghost" data-action="' + leftAction + '">' + esc(leftLabel) + '</button>' +
+            '<div class="appbar-title">' +
+              '<div class="proj-name">' + esc(project.name) + '</div>' +
+              '<div class="proj-sub">Repair Estimate</div>' +
+            '</div>' +
+            (Exporter.available
+              ? '<button class="btn-ghost" data-action="export" data-role="export-btn">Export</button>'
+              : '<button class="btn-ghost" data-action="export" data-role="export-btn" disabled title="Export unavailable \u2014 vendor files missing">Export</button>') +
+          '</div>' +
+          '<div class="appbar-row totals-row">' +
+            '<div class="grand" data-role="grand-total">' + fmt(gt) + '</div>' +
+            '<div class="progress-wrap">' +
+              '<div class="progress-bar"><span style="width:' + pr.pct + '%"></span></div>' +
+              '<div class="progress-label">' + pr.complete + '/' + pr.total + ' groups &middot; ' + pr.pct + '%</div>' +
+            '</div>' +
+          '</div>' +
+        '</header>';
+    }
+
+    /* ---------- projects screen ---------- */
+    function projectsHTML() {
+      var active = State.root.activeProjectId;
+      var cards = State.root.projects.map(function (p) {
+        var total = Calc.grandTotal(p, sp());
+        return '' +
+          '<li class="proj-card' + (p.id === active ? ' is-active' : '') + '" data-action="open-project" data-project-id="' + p.id + '">' +
+            '<div class="proj-card-main">' +
+              '<div class="proj-card-name">' + esc(p.name) + '</div>' +
+              '<div class="proj-card-meta">' + p.rooms.length + ' rooms &middot; ' + fmt(total) + ' &middot; saved ' + esc(fmtTime(p.updatedAt)) + '</div>' +
+            '</div>' +
+            '<div class="proj-card-actions">' +
+              '<button class="icon-btn" data-action="rename-project" data-project-id="' + p.id + '" aria-label="Rename project">&#9998;</button>' +
+              '<button class="icon-btn danger" data-action="delete-project" data-project-id="' + p.id + '" aria-label="Delete project">&#128465;</button>' +
+            '</div>' +
+          '</li>';
+      }).join("");
+      return '' +
+        '<header class="appbar">' +
+          '<div class="appbar-row">' +
+            '<div class="appbar-title">' +
+              '<div class="proj-name">Projects</div>' +
+              '<div class="proj-sub">Repair Cost Estimator</div>' +
+            '</div>' +
+            '<button class="btn-primary" data-action="new-project">+ New</button>' +
+          '</div>' +
+        '</header>' +
+        '<main class="screen">' +
+          '<div class="section-head">Your properties</div>' +
+          '<ul class="proj-list">' + cards + '</ul>' +
+        '</main>';
+    }
+
+    /* ---------- room list screen ---------- */
+    function sortedRooms(project) {
+      // Delegate to Calc so screen and export share one room order.
+      return Calc.displayRooms(project);
+    }
+    function roomCardHTML(project, room) {
+      var subtotal = Calc.roomSubtotal(project, sp(), room);
+      var rp = Calc.roomProgress(project, room);
+      var pct = rp.total ? Math.round(rp.complete / rp.total * 100) : 0;
+      var multi = RT[room.type].multi;
+      var controls = multi
+        ? '<button class="icon-btn" data-action="rename-room" data-room-id="' + room.id + '" aria-label="Rename room">&#9998;</button>' +
+          '<button class="icon-btn danger" data-action="remove-room" data-room-id="' + room.id + '" aria-label="Remove room">&#128465;</button>'
+        : '';
+      return '' +
+        '<li class="room-card" data-action="open-room" data-room-id="' + room.id + '">' +
+          '<div class="room-card-top">' +
+            '<div class="room-card-name">' + esc(room.label) + '</div>' +
+            '<div class="room-card-total">' + fmt(subtotal) + '</div>' +
+          '</div>' +
+          '<div class="room-card-bottom">' +
+            '<div class="mini-progress"><span style="width:' + pct + '%"></span></div>' +
+            '<div class="room-card-meta">' + rp.complete + '/' + rp.total + ' groups</div>' +
+            controls +
+          '</div>' +
+        '</li>';
+    }
+    function roomListHTML(project) {
+      var cards = sortedRooms(project).map(function (r) { return roomCardHTML(project, r); }).join("");
+      return headerHTML(project, "go-projects", "\u2039 Projects") +
+        '<main class="screen">' +
+          '<div class="section-head">Rooms &middot; tap to add repairs</div>' +
+          '<ul class="room-list">' + cards + '</ul>' +
+          '<div class="add-room-bar">' +
+            '<button class="btn-add" data-action="add-room" data-room-type="bathroom">+ Bathroom</button>' +
+            '<button class="btn-add" data-action="add-room" data-room-type="bedroom">+ Bedroom</button>' +
+            '<button class="btn-add" data-action="add-room" data-room-type="living">+ Living / Common</button>' +
+          '</div>' +
+          '<section class="photo-section" id="photo-section">' +
+            '<div class="photo-section-head">' +
+              '<div class="photo-section-title">Photos</div>' +
+              '<button class="btn-secondary" data-action="add-project-photo">+ Add photo</button>' +
+            '</div>' +
+            '<div class="photo-gallery is-empty" id="photo-gallery" data-role="photo-gallery">No photos yet</div>' +
+            '<div id="photo-status"></div>' +
+          '</section>' +
+        '</main>';
+    }
+
+    /* ---------- room detail screen ---------- */
+    function lineHTML(project, room, groupId, itemId, noAction) {
+      var def = Calc.itemDef(project, itemId);
+      var lk = lineKey(room.id, groupId, itemId);
+      var ls = project.lines[lk] || { checked: false, qty: 0 };
+      var eff = Calc.effectiveCost(project, sp(), itemId);
+      var overridden = hasOwn(project.priceOverrides, itemId);
+      var total = Calc.lineTotal(project, sp(), lk);
+      var qtyDisabled = noAction || !ls.checked;
+      var photoCount = State.photoCountForLine(lk);
+      var badge = photoCount > 0
+        ? '<span class="badge">' + photoCount + '</span>' : '';
+      return '' +
+        '<div class="line' + (ls.checked ? ' is-checked' : '') + (noAction ? ' is-disabled' : '') + '"' +
+             ' data-line-key="' + esc(lk) + '" data-item-id="' + esc(itemId) + '" data-room-id="' + room.id + '" data-group-id="' + esc(groupId) + '">' +
+          '<input class="line-check" type="checkbox" data-role="check" data-room-id="' + room.id + '" data-group-id="' + esc(groupId) + '" data-item-id="' + esc(itemId) + '"' +
+                 (ls.checked ? " checked" : "") + (noAction ? " disabled" : "") + ' aria-label="Include ' + esc(def.name) + '">' +
+          '<div class="line-main">' +
+            '<div class="line-name">' + esc(def.name) + (def.custom ? ' <span class="tag">custom</span>' : '') + '</div>' +
+          '</div>' +
+          '<button class="icon-btn line-cam" data-action="add-line-photo" data-line-key="' + esc(lk) + '" data-item-id="' + esc(itemId) + '"' +
+                  ' data-room-id="' + room.id + '" data-group-id="' + esc(groupId) + '" aria-label="Add photo for ' + esc(def.name) + '">' +
+            '&#128247;' + badge +
+          '</button>' +
+          '<input class="qty" type="number" inputmode="decimal" min="0" step="any" data-role="qty"' +
+                 ' data-room-id="' + room.id + '" data-group-id="' + esc(groupId) + '" data-item-id="' + esc(itemId) + '" data-line-key="' + esc(lk) + '"' +
+                 ' value="' + (ls.qty > 0 ? esc(ls.qty) : "") + '" placeholder="0"' + (qtyDisabled ? " disabled" : "") + ' aria-label="Quantity">' +
+          '<div class="line-total" data-role="line-total" data-line-key="' + esc(lk) + '">' + (total > 0 ? fmt(total) : "\u2014") + '</div>' +
+          '<div class="line-sub">' +
+            '<button class="price-btn' + (overridden ? " is-override" : "") + '" data-action="edit-price" data-item-id="' + esc(itemId) + '"' + (noAction ? " disabled" : "") + '>' +
+              fmt(eff) + (overridden ? ' <span class="dot"></span>' : '') +
+            '</button>' +
+            '<span class="unit">/ ' + esc(def.unit) + '</span>' +
+          '</div>' +
+          '<button class="icon-btn del" data-action="delete-line" data-item-id="' + esc(itemId) + '" data-room-id="' + room.id + '" aria-label="Delete ' + esc(def.name) + '">&times;</button>' +
+        '</div>';
+    }
+    function addItemRowHTML(room, groupId) {
+      return '' +
+        '<div class="add-item" data-group-id="' + esc(groupId) + '" data-room-id="' + room.id + '">' +
+          '<input class="ai-name" data-role="ai-name" type="text" placeholder="Add item name">' +
+          '<input class="ai-cost" data-role="ai-cost" type="number" inputmode="decimal" min="0" step="any" placeholder="Cost">' +
+          '<input class="ai-unit" data-role="ai-unit" type="text" placeholder="Unit">' +
+          '<button class="btn-add-item" data-action="add-item" data-group-id="' + esc(groupId) + '" data-room-id="' + room.id + '">Add</button>' +
+        '</div>';
+    }
+    function groupHTML(project, room, groupId) {
+      var g = GROUPS[groupId];
+      var gkey = groupKey(room.id, groupId);
+      var collapsed = !!State.ui.collapsed[gkey];
+      var gs = project.groupState[gkey] || { noAction: false };
+      var noAction = !!gs.noAction;
+      var complete = Calc.isGroupComplete(project, room.id, groupId);
+      var subtotal = Calc.groupSubtotal(project, sp(), room.id, groupId);
+      var items = Calc.groupItemIds(project, groupId).map(function (id) {
+        return lineHTML(project, room, groupId, id, noAction);
+      }).join("");
+      return '' +
+        '<section class="group' + (collapsed ? " is-collapsed" : "") + '" data-group-id="' + esc(groupId) + '">' +
+          '<button class="group-head" data-action="toggle-group" data-room-id="' + room.id + '" data-group-id="' + esc(groupId) + '">' +
+            '<span class="chev">&#9660;</span>' +
+            '<span class="group-label">' + esc(g.label) + '</span>' +
+            '<span class="group-badge' + (complete ? " is-done" : "") + '">&#10003;</span>' +
+            '<span class="group-subtotal" data-role="group-subtotal" data-group-key="' + esc(gkey) + '">' + fmt(subtotal) + '</span>' +
+          '</button>' +
+          '<div class="group-body">' +
+            '<label class="no-action-row">' +
+              '<input type="checkbox" data-role="no-action" data-room-id="' + room.id + '" data-group-id="' + esc(groupId) + '"' + (noAction ? " checked" : "") + '>' +
+              '<span>No action needed</span>' +
+            '</label>' +
+            items +
+            addItemRowHTML(room, groupId) +
+          '</div>' +
+        '</section>';
+    }
+    function roomDetailHTML(project, room) {
+      var rp = Calc.roomProgress(project, room);
+      var subtotal = Calc.roomSubtotal(project, sp(), room);
+      var groups = RT[room.type].groups.map(function (gid) {
+        return groupHTML(project, room, gid);
+      }).join("");
+      return headerHTML(project, "back-to-rooms", "\u2039 Rooms") +
+        '<main class="screen" id="room-view">' +
+          '<div class="room-detail-head">' +
+            '<div class="rd-title">' + esc(room.label) + '</div>' +
+            '<div class="rd-sub"><span data-role="room-subtotal">' + fmt(subtotal) + '</span> &middot; ' + rp.complete + '/' + rp.total + ' groups</div>' +
+          '</div>' +
+          '<div id="groups">' + groups + '</div>' +
+        '</main>';
+    }
+
+    /* ---------- photo gallery + viewer ---------- */
+    function showPhotoStatus(html) {
+      var el = document.getElementById("photo-status");
+      if (el) el.innerHTML = html;
+    }
+    function showPhotoError(msg) {
+      showPhotoStatus('<div class="photo-error">' + esc(msg) + '</div>');
+      setTimeout(function () { showPhotoStatus(""); }, 5000);
+    }
+
+    function renderPhotoGallery(records) {
+      var gallery = document.getElementById("photo-gallery");
+      if (!gallery) return;
+      if (!records.length) {
+        gallery.className = "photo-gallery is-empty";
+        gallery.innerHTML = "No photos yet";
+        return;
+      }
+      gallery.className = "photo-gallery";
+      gallery.innerHTML = records.map(function (rec) {
+        var url = trackUrl(URL.createObjectURL(rec.thumb));
+        return '' +
+          '<button class="photo-thumb" data-action="open-photo" data-photo-id="' + esc(rec.id) + '" aria-label="' + esc(rec.label) + '">' +
+            '<img src="' + url + '" alt="">' +
+            '<span class="photo-thumb-label">' + esc(rec.label) + '</span>' +
+          '</button>';
+      }).join("");
+    }
+
+    function hydratePhotoGallery(project) {
+      if (!project) {
+        renderPhotoGallery([]);
+        return Promise.resolve();
+      }
+      // getLivePhotosForProject filters to metadata-backed records (and cleans
+      // orphans) even when project.photos is empty, so ghosts never render.
+      return Store.getLivePhotosForProject(project).then(function (records) {
+        renderPhotoGallery(records);
+      }).catch(function () {
+        renderPhotoGallery([]);
+      });
+    }
+
+    function openPhotoViewer(photoId) {
+      Store.getPhoto(photoId).then(function (rec) {
+        if (!rec) return;
+        if (_viewerUrl) URL.revokeObjectURL(_viewerUrl);
+        _viewerUrl = URL.createObjectURL(rec.full);
+        modalRoot.innerHTML = '' +
+          '<div class="viewer-backdrop" data-role="viewer">' +
+            '<div class="viewer-top">' +
+              '<button class="btn-ghost" data-action="close-viewer">Close</button>' +
+              '<div class="viewer-title">' + esc(rec.label) + '</div>' +
+            '</div>' +
+            '<div class="viewer-img-wrap"><img src="' + _viewerUrl + '" alt=""></div>' +
+            '<label class="viewer-label"><span>Label</span>' +
+              '<input id="viewer-label-input" type="text" value="' + esc(rec.label) + '" data-photo-id="' + esc(photoId) + '"></label>' +
+            '<div class="viewer-actions">' +
+              '<button class="btn-secondary" data-action="save-photo-label" data-photo-id="' + esc(photoId) + '">Save label</button>' +
+              '<button class="btn-danger" data-action="delete-photo" data-photo-id="' + esc(photoId) + '">Delete</button>' +
+            '</div>' +
+          '</div>';
+      });
+    }
+
+    function closeViewer() {
+      modalRoot.innerHTML = "";
+      if (_viewerUrl) { URL.revokeObjectURL(_viewerUrl); _viewerUrl = null; }
+    }
+
+    function linePhotoLabel(roomId, groupId, itemId) {
+      var p = State.activeProject();
+      var room = p.rooms.find(function (r) { return r.id === roomId; });
+      var def = Calc.itemDef(p, itemId);
+      return def.name + " \u2014 " + (room ? room.label : "");
+    }
+
+    /* ---------- top-level render ---------- */
+    function render() {
+      revokeAllUrls();
+      var project = State.activeProject();
+      var screen = State.ui.screen;
+      var html;
+      if (screen === "projects" || !project) {
+        html = projectsHTML();
+      } else if (screen === "room" && State.currentRoom()) {
+        html = roomDetailHTML(project, State.currentRoom());
+      } else {
+        State.ui.screen = "rooms";
+        html = roomListHTML(project);
+      }
+      // Preserve scroll on same-screen re-render; reset when navigating.
+      var key = State.ui.screen + ":" + State.ui.roomId;
+      var same = key === State._renderKey;
+      var y = window.scrollY;
+      app.innerHTML = html;
+      State._renderKey = key;
+      window.scrollTo(0, same ? y : 0);
+      if (State.ui.screen === "rooms" && project) hydratePhotoGallery(project);
+    }
+
+    /* ---------- in-place total updates (qty keystrokes) ---------- */
+    function refreshTotals(roomId) {
+      var p = State.activeProject(), prices = sp();
+      var room = p.rooms.find(function (r) { return r.id === roomId; });
+
+      app.querySelectorAll('[data-role="line-total"]').forEach(function (el) {
+        var t = Calc.lineTotal(p, prices, el.getAttribute("data-line-key"));
+        el.textContent = t > 0 ? fmt(t) : "\u2014";
+      });
+      app.querySelectorAll('[data-role="group-subtotal"]').forEach(function (el) {
+        var parts = splitAtFirstColon(el.getAttribute("data-group-key"));
+        el.textContent = fmt(Calc.groupSubtotal(p, prices, parts[0], parts[1]));
+      });
+      var rs = app.querySelector('[data-role="room-subtotal"]');
+      if (rs && room) rs.textContent = fmt(Calc.roomSubtotal(p, prices, room));
+      var gt = app.querySelector('[data-role="grand-total"]');
+      if (gt) gt.textContent = fmt(Calc.grandTotal(p, prices));
+    }
+
+    /* ---------- price modal ---------- */
+    function openPriceModal(itemId) {
+      var p = State.activeProject();
+      var def = Calc.itemDef(p, itemId);
+      var eff = Calc.effectiveCost(p, sp(), itemId);
+      var std = Calc.standardCost(p, sp(), itemId);
+      var overridden = hasOwn(p.priceOverrides, itemId);
+      var standardLabel = def.custom ? "Update item price" : "Update standard price";
+      modalRoot.innerHTML = '' +
+        '<div class="modal-backdrop">' +
+          '<div class="modal" role="dialog" aria-modal="true" aria-label="Edit price">' +
+            '<div class="modal-title">Edit price</div>' +
+            '<div class="modal-item">' + esc(def.name) + ' <span class="unit">/ ' + esc(def.unit) + '</span></div>' +
+            '<label class="modal-field"><span>Unit cost</span>' +
+              '<input id="price-input" type="number" inputmode="decimal" min="0" step="any" value="' + esc(eff) + '"></label>' +
+            (overridden ? '<div class="override-note">This project uses a custom price (standard: ' + fmt(std) + ').</div>' : '') +
+            '<div class="modal-actions">' +
+              '<button class="btn-primary" data-action="price-save-project" data-item-id="' + esc(itemId) + '">This project only</button>' +
+              '<button class="btn-secondary" data-action="price-save-standard" data-item-id="' + esc(itemId) + '">' + standardLabel + '</button>' +
+            '</div>' +
+            '<div class="modal-actions">' +
+              (overridden ? '<button class="btn-ghost" data-action="price-revert" data-item-id="' + esc(itemId) + '">Revert to standard</button>' : '') +
+              '<button class="btn-ghost" data-action="close-modal">Cancel</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      var input = document.getElementById("price-input");
+      if (input) { input.focus(); input.select(); }
+    }
+    function closeModal() { modalRoot.innerHTML = ""; _exportResult = null; }
+
+    /* ---------- export delivery sheet ---------- */
+    var _exportResult = null; // { blob, filename } while the sheet is open
+
+    function fmtBytes(n) {
+      if (n < 1024) return n + " B";
+      if (n < 1024 * 1024) return Math.round(n / 1024) + " KB";
+      return (n / (1024 * 1024)).toFixed(1) + " MB";
+    }
+
+    // NOTE: iOS standalone PWAs handle silent downloads poorly; the share
+    // sheet is the reliable path there and matches the field workflow of
+    // sending the estimate to the team.
+    function openExportSheet(result) {
+      _exportResult = result;
+      var canShare = false;
+      try {
+        var f = new File([result.blob], result.filename, { type: "application/zip" });
+        canShare = !!(navigator.canShare && navigator.canShare({ files: [f] }));
+      } catch (e) { canShare = false; }
+      modalRoot.innerHTML = '' +
+        '<div class="modal-backdrop">' +
+          '<div class="modal" role="dialog" aria-modal="true" aria-label="Export ready">' +
+            '<div class="modal-title">Export ready</div>' +
+            '<div class="modal-item">' + esc(result.filename) + ' &middot; ' + esc(fmtBytes(result.blob.size)) + '</div>' +
+            '<div class="modal-actions">' +
+              '<button class="btn-primary" data-action="export-download">Download</button>' +
+              (canShare ? '<button class="btn-secondary" data-action="export-share">Share\u2026</button>' : '') +
+            '</div>' +
+            '<div class="modal-actions">' +
+              '<button class="btn-ghost" data-action="close-modal">Cancel</button>' +
+            '</div>' +
+            '<div id="export-sheet-status"></div>' +
+          '</div>' +
+        '</div>';
+    }
+
+    // Non-blocking inline error shown at the top of the current screen.
+    function showExportError(msg) {
+      var main = app.querySelector("main.screen");
+      if (!main) return;
+      var old = document.getElementById("export-error");
+      if (old) old.parentNode.removeChild(old);
+      var div = document.createElement("div");
+      div.id = "export-error";
+      div.className = "photo-error";
+      div.style.marginBottom = "12px";
+      div.textContent = msg;
+      main.insertBefore(div, main.firstChild);
+      setTimeout(function () {
+        if (div.parentNode) div.parentNode.removeChild(div);
+      }, 6000);
+    }
+
+    function exportSheetError(msg) {
+      var el = document.getElementById("export-sheet-status");
+      if (el) el.innerHTML = '<div class="photo-error">' + esc(msg) + '</div>';
+    }
+
+    function downloadExport() {
+      if (!_exportResult) return;
+      var url = URL.createObjectURL(_exportResult.blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = _exportResult.filename;
+      a.style.display = "none";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      // iOS can race an immediate revoke with the download starting.
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+      closeModal();
+    }
+
+    function shareExport() {
+      if (!_exportResult) return;
+      var file = new File([_exportResult.blob], _exportResult.filename, { type: "application/zip" });
+      navigator.share({ files: [file] }).then(function () {
+        closeModal();
+      }).catch(function (err) {
+        if (err && err.name === "AbortError") return; // user cancelled: not an error
+        console.error("Share failed:", err);
+        exportSheetError("Share failed \u2014 try Download instead");
+      });
+    }
+    function modalPriceValue() {
+      var input = document.getElementById("price-input");
+      if (!input) return null;
+      var v = parseFloat(input.value);
+      if (isNaN(v) || v < 0) { alert("Enter a valid cost (0 or more)."); return null; }
+      return round2(v);
+    }
+
+    return {
+      render: render, refreshTotals: refreshTotals,
+      openPriceModal: openPriceModal, closeModal: closeModal, modalPriceValue: modalPriceValue,
+      openPhotoViewer: openPhotoViewer, closeViewer: closeViewer,
+      showPhotoStatus: showPhotoStatus, showPhotoError: showPhotoError,
+      linePhotoLabel: linePhotoLabel, hydratePhotoGallery: hydratePhotoGallery,
+      openExportSheet: openExportSheet, downloadExport: downloadExport, shareExport: shareExport,
+      showExportError: showExportError
+    };
+  })();
+
+  /* =================================================================
+   * 6) EVENTS — delegated listeners on document.body only.
+   * ================================================================= */
+  var Events = (function () {
+    var RT = Catalog.ROOM_TYPES;
+    var _exporting = false;
+
+    function onClick(e) {
+      if (e.target.classList && e.target.classList.contains("modal-backdrop")) {
+        UI.closeModal(); return;
+      }
+      if (e.target.classList && e.target.classList.contains("viewer-backdrop")) {
+        UI.closeViewer(); return;
+      }
+      var t = e.target.closest("[data-action]");
+      if (!t) return;
+      var a = t.dataset.action;
+      var d = t.dataset;
+      var p = State.activeProject();
+
+      switch (a) {
+        case "go-projects":
+          State.ui.screen = "projects"; UI.render(); break;
+
+        case "open-project":
+          State.switchProject(d.projectId); State.ui.screen = "rooms"; UI.render(); break;
+
+        case "new-project": {
+          var nm = prompt("New project name:", "Property " + (State.root.projects.length + 1));
+          if (nm && nm.trim()) { State.createProject(nm.trim()); State.ui.screen = "rooms"; UI.render(); }
+          break;
+        }
+        case "rename-project": {
+          var proj = State.root.projects.find(function (x) { return x.id === d.projectId; });
+          var nm2 = prompt("Rename project:", proj ? proj.name : "");
+          if (nm2 && nm2.trim()) { State.renameProject(d.projectId, nm2.trim()); UI.render(); }
+          break;
+        }
+        case "delete-project": {
+          var proj2 = State.root.projects.find(function (x) { return x.id === d.projectId; });
+          if (proj2 && confirm('Delete "' + proj2.name + '"? This cannot be undone.')) {
+            State.deleteProject(d.projectId).then(function () { UI.render(); });
+          }
+          break;
+        }
+
+        case "open-room":
+          State.ui.roomId = d.roomId; State.ui.screen = "room"; UI.render(); break;
+
+        case "back-to-rooms":
+          State.ui.screen = "rooms"; State.ui.roomId = null; UI.render(); break;
+
+        case "add-room":
+          State.addRoom(d.roomType); UI.render(); break;
+
+        case "remove-room": {
+          var room = p.rooms.find(function (r) { return r.id === d.roomId; });
+          if (room && confirm('Remove "' + room.label + '"? Its selections will be deleted.')) {
+            State.removeRoom(d.roomId); UI.render();
+          }
+          break;
+        }
+        case "rename-room": {
+          var room2 = p.rooms.find(function (r) { return r.id === d.roomId; });
+          var rl = prompt("Rename room:", room2 ? room2.label : "");
+          if (rl && rl.trim()) { State.renameRoom(d.roomId, rl.trim()); UI.render(); }
+          break;
+        }
+
+        case "toggle-group": {
+          var gk = groupKey(d.roomId, d.groupId);
+          State.ui.collapsed[gk] = !State.ui.collapsed[gk];
+          UI.render();
+          break;
+        }
+
+        case "edit-price":
+          UI.openPriceModal(d.itemId); break;
+
+        case "price-save-project": {
+          var v1 = UI.modalPriceValue();
+          if (v1 != null) { State.setPriceOverride(d.itemId, v1); UI.closeModal(); UI.render(); }
+          break;
+        }
+        case "price-save-standard": {
+          var v2 = UI.modalPriceValue();
+          if (v2 != null) {
+            var def = Calc.itemDef(p, d.itemId);
+            if (def.custom) State.setCustomCost(d.itemId, v2);
+            else State.setStandardPrice(d.itemId, v2);
+            UI.closeModal(); UI.render();
+          }
+          break;
+        }
+        case "price-revert":
+          State.revertOverride(d.itemId); UI.closeModal(); UI.render(); break;
+
+        case "close-modal":
+          UI.closeModal(); break;
+
+        case "delete-line":
+          if (confirm("Remove this item from the list?")) { State.removeItem(d.itemId); UI.render(); }
+          break;
+
+        case "add-item": {
+          var box = t.closest(".add-item");
+          var name = box.querySelector('[data-role="ai-name"]').value.trim();
+          var costRaw = box.querySelector('[data-role="ai-cost"]').value;
+          var unit = box.querySelector('[data-role="ai-unit"]').value.trim();
+          var cost = parseFloat(costRaw);
+          if (!name) { alert("Give the item a name."); break; }
+          if (isNaN(cost) || cost < 0) { alert("Enter a valid cost (0 or more)."); break; }
+          State.addCustomItem(d.groupId, { name: name, cost: round2(cost), unit: unit || "ea." });
+          UI.render();
+          break;
+        }
+
+        case "add-project-photo":
+          Photos.openFilePicker(true, function (files) {
+            UI.showPhotoStatus('<div class="photo-saving">Saving\u2026</div>');
+            State.addPhotos(files, { label: "Project photo" }).then(function () {
+              UI.showPhotoStatus("");
+              UI.render();
+            }).catch(function () {
+              UI.showPhotoError("Photo could not be saved \u2014 storage may be full");
+            });
+          });
+          break;
+
+        case "add-line-photo":
+          Photos.openFilePicker(true, function (files) {
+            var label = UI.linePhotoLabel(d.roomId, d.groupId, d.itemId);
+            UI.showPhotoStatus('<div class="photo-saving">Saving\u2026</div>');
+            State.addPhotos(files, { lineKey: d.lineKey, label: label }).then(function () {
+              UI.showPhotoStatus("");
+              UI.render();
+            }).catch(function () {
+              UI.showPhotoError("Photo could not be saved \u2014 storage may be full");
+            });
+          });
+          break;
+
+        case "open-photo":
+          UI.openPhotoViewer(d.photoId);
+          break;
+
+        case "close-viewer":
+          UI.closeViewer();
+          break;
+
+        case "save-photo-label": {
+          var inp = document.getElementById("viewer-label-input");
+          var lbl = inp ? inp.value.trim() : "";
+          if (!lbl) { alert("Enter a label."); break; }
+          State.updatePhotoLabel(d.photoId, lbl).then(function () {
+            UI.closeViewer();
+            UI.render();
+          });
+          break;
+        }
+
+        case "delete-photo":
+          if (confirm("Delete this photo?")) {
+            State.deletePhoto(d.photoId).then(function () {
+              UI.closeViewer();
+              UI.render();
+            });
+          }
+          break;
+
+        case "export": {
+          if (!Exporter.available || _exporting) break; // ignore re-taps
+          var lineCount = Calc.enumerateLines(p, State.standardPrices()).length;
+          if (lineCount === 0 &&
+              !confirm("No items are checked yet \u2014 export an empty estimate?")) break;
+          _exporting = true;
+          var btn = t;
+          var prevText = btn.textContent;
+          btn.disabled = true;
+          btn.textContent = "Building\u2026";
+          Exporter.exportProject(p, State.standardPrices()).then(function (result) {
+            UI.openExportSheet(result);
+          }).catch(function (err) {
+            console.error("Export failed:", err);
+            UI.showExportError("Export failed \u2014 " + ((err && err.message) || "unexpected error"));
+          }).then(function () {
+            // finally: always restore the button, success or failure.
+            _exporting = false;
+            btn.disabled = false;
+            btn.textContent = prevText;
+          });
+          break;
+        }
+
+        case "export-download":
+          UI.downloadExport();
+          break;
+
+        case "export-share":
+          UI.shareExport();
+          break;
+      }
+    }
+
+    function onChange(e) {
+      var el = e.target;
+      var role = el.dataset ? el.dataset.role : null;
+      if (role === "check") {
+        State.toggleLine(el.dataset.roomId, el.dataset.groupId, el.dataset.itemId, el.checked);
+        UI.render();
+      } else if (role === "no-action") {
+        State.toggleNoAction(el.dataset.roomId, el.dataset.groupId);
+        UI.render();
+      }
+    }
+
+    function onInput(e) {
+      var el = e.target;
+      if (!el.dataset || el.dataset.role !== "qty") return;
+      // Qty keystroke: update state + affected totals in place (no full re-render).
+      State.setQty(el.dataset.roomId, el.dataset.groupId, el.dataset.itemId, el.value);
+      UI.refreshTotals(el.dataset.roomId);
+    }
+
+    function bind() {
+      document.body.addEventListener("click", onClick);
+      document.body.addEventListener("change", onChange);
+      document.body.addEventListener("input", onInput);
+      // Persist promptly when the tab is hidden or unloaded.
+      document.addEventListener("visibilitychange", function () {
+        if (document.hidden) State.flush();
+      });
+      window.addEventListener("pagehide", function () { State.flush(); });
+    }
+
+    return { bind: bind };
+  })();
+
+  /* ---------- boot ---------- */
+  State.init();
+  Store.openDB().catch(function () {});
+  Events.bind();
+  UI.render();
+  </script>
+</body>
+</html>
